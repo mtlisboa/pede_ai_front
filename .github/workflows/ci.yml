@@ -1,0 +1,37 @@
+name: Validate client and Docker
+on:
+  push:
+    branches: [dev, main]
+  pull_request:
+    branches: [dev, main]
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm run check
+      - run: npm test
+      - name: Build Docker image
+        run: docker build -t pede-ai-front:test .
+      - name: Smoke test container
+        run: |
+          docker run -d --name pede-ai-front-test -p 8080:8080 pede-ai-front:test
+          for attempt in $(seq 1 20); do
+            if curl --fail http://127.0.0.1:8080/healthz; then
+              curl --fail http://127.0.0.1:8080/ > /dev/null
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs pede-ai-front-test
+          exit 1
+      - name: Container logs and cleanup
+        if: always()
+        run: |
+          docker logs pede-ai-front-test || true
+          docker rm -f pede-ai-front-test || true

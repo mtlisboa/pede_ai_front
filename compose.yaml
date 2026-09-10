@@ -1,0 +1,19 @@
+services:
+  front:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "${FRONT_PORT:-8080}:8080"
+    environment:
+      PORT: 8080
+      API_UPSTREAM: ${API_UPSTREAM:-http://host.docker.internal:8000}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:-}
+      STORES_JSON: ${STORES_JSON:-[]}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
