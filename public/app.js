@@ -109,8 +109,20 @@ function totals(cart) { return `<dl class="totals"><div><dt>Subtotal</dt><dd>${m
 function checkoutView() {
   main.innerHTML = `<section class="narrow">${heading('SACOLA EM REVISÃO', 'Confira antes de continuar')}<div class="panel">${state.cart?.status === 'CHECKOUT' ? `${state.cart.items.map(i => `<p>${i.quantity}× ${h(i.product_name_snapshot)} <strong>${money(i.total_price_snapshot)}</strong></p>`).join('')}${totals(state.cart)}` : '<p>Sua sacola foi colocada em revisão nesta sessão. Retome a edição para consultar os valores atualizados.</p>'}${note('Seu pedido ainda não foi enviado à cozinha. A finalização e o pagamento não estão disponíveis no momento.')}${button('Voltar à edição da sacola', 'cancel-checkout', '', 'primary full')}</div></section>`;
 }
-function partnerHome() {
-  main.innerHTML = `${heading('ÁREA DO ESTABELECIMENTO', `Olá, ${h(state.user.name.split(' ')[0])}`)}<div class="dashboard-grid"><a class="panel dashboard-card" href="#produtos"><span class="dashboard-icon" aria-hidden="true">▦</span><h2>Meu cardápio</h2><p>Cadastre produtos, ajuste preços e controle a disponibilidade.</p><strong>Gerenciar produtos →</strong></a><a class="panel dashboard-card" href="#cozinha"><span class="dashboard-icon" aria-hidden="true">▤</span><h2>Cozinha</h2><p>Receba tickets, inicie o preparo e sinalize os pedidos prontos.</p><strong>Abrir fila de preparo →</strong></a></div>${note('Pedidos, financeiro, campanhas e integrações serão disponibilizados conforme os serviços da loja forem habilitados.')}`;
+async function partnerHome() {
+  const connection = await api('/api/v1/stores/me/mercado-pago');
+  const connectionNotice = connection.connected
+    ? '<a class="button ghost" href="#integracoes">Mercado Pago conectado</a>'
+    : note('Conexão obrigatória: o proprietário precisa autorizar o Mercado Pago para a loja receber novos pedidos. <a href="#integracoes">Conectar conta</a>');
+
+  main.innerHTML = `${heading('ÁREA DO ESTABELECIMENTO', `Olá, ${h(state.user.name.split(' ')[0])}`)}${connectionNotice}<div class="dashboard-grid"><a class="panel dashboard-card" href="#produtos"><span class="dashboard-icon" aria-hidden="true">▦</span><h2>Meu cardápio</h2><p>Cadastre produtos, ajuste preços e controle a disponibilidade.</p><strong>Gerenciar produtos →</strong></a><a class="panel dashboard-card" href="#cozinha"><span class="dashboard-icon" aria-hidden="true">▤</span><h2>Cozinha</h2><p>Receba tickets, inicie o preparo e sinalize os pedidos prontos.</p><strong>Abrir fila de preparo →</strong></a></div>${note('Pedidos, financeiro, campanhas e integrações serão disponibilizados conforme os serviços da loja forem habilitados.')}`;
+}
+async function integrationsView() {
+  if (!operator()) return login(true);
+  const epoch = state.epoch;
+  const data = await api('/api/v1/stores/me/mercado-pago');
+  if (epoch !== state.epoch) return;
+  main.innerHTML = `${heading('CONTA DA LOJA', 'Mercado Pago', '<a class="button ghost" href="#parceiro">Voltar</a>')}<section class="panel narrow"><h2>${data.connected ? 'Conta conectada' : 'Conexão obrigatória'}</h2><p>${data.connected ? `Conta Mercado Pago ${h(data.provider_user_id)} vinculada à sua loja.` : 'Autorize sua conta Mercado Pago para habilitar o recebimento de novos pedidos. O cardápio e os pedidos existentes continuam acessíveis.'}</p>${!data.configured ? note('A plataforma está concluindo a configuração do Mercado Pago. Entre em contato com o suporte para liberar a conexão.') : data.can_authorize ? button(data.connected ? 'Autorizar novamente' : 'Conectar Mercado Pago', 'connect-mercado-pago') : note('Somente o proprietário da loja pode concluir esta autorização.')}${data.status === 'REAUTH_REQUIRED' ? note('A autorização expirou ou foi revogada. Conecte novamente para liberar novos pedidos.') : ''}<p class="form-error" role="alert" hidden></p></section>`;
 }
 let productCategories = [];
 async function productsView() {
@@ -171,6 +183,7 @@ async function render() {
     else if (page === 'conta') await account();
     else if (page === 'sacola' || page === 'checkout') await cartView();
     else if (page === 'parceiro') await login(true);
+    else if (page === 'integracoes') await integrationsView();
     else if (page === 'produtos') await productsView();
     else if (page === 'cozinha') await kitchenView();
     else if (page === 'pedidos') main.innerHTML = `${heading('MEUS PEDIDOS', 'Acompanhamento de pedidos')}${empty('Acompanhamento ainda não disponível', 'Você pode montar e revisar sua sacola. A criação e o histórico de pedidos serão liberados quando a finalização estiver disponível.', `<a class="button primary" href="#${state.store ? `sacola/${state.store}` : 'inicio'}">Voltar à sacola</a>`)}`;
@@ -216,7 +229,12 @@ document.addEventListener('click', event => {
     modalOpen(`<h2 id="modal-title">Observação do item</h2><form data-form="item-note" data-id="${id}"><label>${h(item.product_name_snapshot)}<textarea name="observation" maxlength="1000">${h(item.observation || '')}</textarea></label><button class="button primary full">Salvar observação</button></form>`); return;
   }
   action(async () => {
-    if (name === 'refresh') await render();
+    if (name === 'connect-mercado-pago') {
+      const result = await api('/api/v1/stores/me/mercado-pago/authorize', { method: 'POST', data: {} });
+      const url = new URL(result.authorization_url);
+      if (url.origin !== 'https://auth.mercadopago.com' || url.pathname !== '/authorization') throw new Error('Endereço de autorização inválido.');
+      location.assign(url.href);
+    } else if (name === 'refresh') await render();
     else if (name === 'filter') { state.filter = el.dataset.filter; state.page = 1; await render(); }
     else if (name === 'page') { state.page = positiveId(el.dataset.page) || 1; await render(); }
     else if (name === 'reset-search') { state.page = 1; state.query = ''; state.filter = ''; await render(); }
@@ -274,7 +292,9 @@ document.addEventListener('submit', event => {
       await api('/auth/user/generate-code', { method: 'POST', data: { phone_number: phone } }); verification(phone);
     } else if (name === 'verify' || name === 'employee') {
       const response = await api(name === 'verify' ? '/auth/user/verify-code' : '/auth/user/login', { method: 'POST', data: name === 'verify' ? { phone_number: form.dataset.phone, code: values.code } : values });
-      state.user = response.user; state.cart = null; nav(); go(name === 'employee' ? 'parceiro' : state.store ? `loja/${state.store}` : 'inicio');
+      state.user = response.user; state.cart = null; nav();
+      if (name === 'employee') { const connection = await api('/api/v1/stores/me/mercado-pago'); go(connection.connected ? 'parceiro' : 'integracoes'); return; }
+      go(name === 'employee' ? 'parceiro' : state.store ? `loja/${state.store}` : 'inicio');
     } else if (name === 'register') {
       await api('/api/v1/users', { method: 'POST', data: { name: values.name.trim(), phone: values.phone.replace(/\D/g, ''), cpf: values.cpf.replace(/\D/g, '') || null } });
       go('entrar'); toast('Conta criada. Peça seu código para entrar.');

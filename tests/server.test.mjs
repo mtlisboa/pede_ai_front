@@ -137,3 +137,24 @@ test('product photo upload preserves binary bytes and remains protected by origi
   assert.equal((await fetch(base + '/backend/api/v1/products', { method: 'POST', headers, body: data })).status, 415);
   for (const path of ['manage', 'categories']) assert.equal((await f.send('/backend/api/v1/products/' + path)).status, 200);
 });
+
+test('merchant OAuth binds callbacks to an HttpOnly browser nonce and keeps session cookies', async t => {
+  const f = await fixture(t, entry => entry.url.endsWith('/authorize') ? { authorization_url: 'https://auth.mercadopago.com/authorization?state=test' } : { connected: true });
+  const start = await f.send('/backend/api/v1/stores/me/mercado-pago/authorize', 'POST', { browser_nonce: 'attacker', redirect_uri: 'https://attacker.test' }, 'pede_access=owner');
+  assert.equal(start.status, 200);
+  const cookie = start.headers.getSetCookie().find(c => c.startsWith('pede_mp_nonce='));
+  assert.match(cookie, /HttpOnly; SameSite=Lax/);
+  const sent = JSON.parse(f.seen[0].body);
+  assert.match(sent.browser_nonce, /^[a-zA-Z0-9_-]{43}$/);
+  assert.equal(sent.redirect_uri, f.base + '/oauth/mercado-pago/callback');
+  assert.equal((await f.send('/backend/api/v1/stores/me/mercado-pago/complete', 'POST', { state: 'state', code: 'code' }, 'pede_access=owner')).status, 400);
+  const complete = await f.send('/backend/api/v1/stores/me/mercado-pago/complete', 'POST', { state: 'state', code: 'code', browser_nonce: 'attacker' }, `pede_access=owner; ${cookie.split(';')[0]}`);
+  assert.equal(complete.status, 200);
+  assert.equal(JSON.parse(f.seen.at(-1).body).browser_nonce, sent.browser_nonce);
+  assert.match(complete.headers.getSetCookie()[0], /Max-Age=0/);
+  const page = await f.send('/oauth/mercado-pago/callback?code=private-code&state=state');
+  assert.equal(page.status, 200);
+  assert.equal(page.headers.get('referrer-policy'), 'no-referrer');
+  assert.doesNotMatch(await page.text(), /private-code/);
+  assert.equal((await f.send('/oauth-callback.js')).status, 200);
+});

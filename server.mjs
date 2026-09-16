@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
@@ -6,6 +7,8 @@ import { resolve, extname, sep } from 'node:path';
 const root = resolve(fileURLToPath(new URL('./public/', import.meta.url)));
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.jpg': 'image/jpeg', '.png': 'image/png', '.svg': 'image/svg+xml', '.webp': 'image/webp' };
 const ROUTES = [
+  [/^\/api\/v1\/stores\/me\/mercado-pago$/, ['GET']],
+  [/^\/api\/v1\/stores\/me\/mercado-pago\/(authorize|complete)$/, ['POST']],
   [/^\/api\/v1\/products\/manage$/, ['GET']],
   [/^\/api\/v1\/products\/categories$/, ['GET', 'POST']],
   [/^\/api\/v1\/products\/\d+\/image$/, ['POST']],
@@ -102,6 +105,10 @@ export function createApp(options = {}) {
         if (req.headers.origin !== expectedOrigin || req.headers['sec-fetch-site'] === 'cross-site' || req.headers['x-pede-client'] !== 'web') return json(res, 403, { detail: 'Origem da requisição não permitida.' });
         if (!(req.headers['content-type'] || '').startsWith('application/json') && !(req.method === 'POST' && /^\/backend\/api\/v1\/products\/\d+\/image$/.test(path) && req.headers['content-type'] === 'application/octet-stream')) return json(res, 415, { detail: 'Use application/json.' });
       }
+      if (path === '/oauth/mercado-pago/callback' && req.method === 'GET') {
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' });
+        return res.end(await readFile(resolve(root, 'oauth-callback.html')));
+      }
       if (path === '/healthz' && req.method === 'GET') return json(res, 200, { status: 'ok' });
       if (path === '/config' && req.method === 'GET') return json(res, 200, { stores: stores.map(s => ({ id: s.id, name: s.name, description: s.description || '' })) });
       const session = cookies(req);
@@ -127,7 +134,18 @@ export function createApp(options = {}) {
         const target = path.slice('/backend'.length);
         if (!ROUTES.some(([pattern, methods]) => pattern.test(target) && methods.includes(req.method))) return json(res, 404, { detail: 'Recurso não disponível.' });
         let access = session.pede_access;
-        const data = ['GET', 'HEAD'].includes(req.method) ? undefined : await body(req, target.endsWith('/image') ? 5 * 1024 * 1024 : 1024 * 1024);
+        let data = ['GET', 'HEAD'].includes(req.method) ? undefined : await body(req, target.endsWith('/image') ? 5 * 1024 * 1024 : 1024 * 1024);
+        const oauthStart = target === '/api/v1/stores/me/mercado-pago/authorize';
+        const oauthComplete = target === '/api/v1/stores/me/mercado-pago/complete';
+        let nonce;
+        if (oauthStart || oauthComplete) {
+          nonce = oauthStart ? randomBytes(32).toString('base64url') : session.pede_mp_nonce;
+          if (!nonce || !/^[a-zA-Z0-9_-]{43}$/.test(nonce)) return json(res, 400, { detail: 'Autorização expirada. Inicie a conexão novamente neste navegador.' });
+          let payload;
+          try { payload = JSON.parse(data || '{}'); } catch { return json(res, 400, { detail: 'JSON inválido.' }); }
+          if (!payload || Array.isArray(payload) || typeof payload !== 'object') return json(res, 400, { detail: 'Dados inválidos.' });
+          data = JSON.stringify({ ...payload, browser_nonce: nonce, ...(oauthStart ? { redirect_uri: `${origin || `http${secure ? 's' : ''}://${req.headers.host}`}/oauth/mercado-pago/callback` } : {}) });
+        }
         let response = await fetchAPI(target + url.search, req.method, data, access, req.headers['content-type']);
         if (response.status === 401 && session.pede_refresh && !target.startsWith('/auth/')) {
           const tokens = await refresh(session.pede_refresh);
@@ -140,6 +158,11 @@ export function createApp(options = {}) {
         }
         if (!(response.headers.get('content-type') || '').includes('application/json')) return json(res, 502, { detail: 'O serviço retornou uma resposta inesperada.' });
         const result = await response.json();
+        if (response.ok && (oauthStart || oauthComplete)) {
+          const prior = res.getHeader('Set-Cookie') || [];
+          res.setHeader('Set-Cookie', [...(Array.isArray(prior) ? prior : [prior]),
+            `pede_mp_nonce=${oauthStart ? nonce : ''}; Path=/; Max-Age=${oauthStart ? 600 : 0}; HttpOnly; SameSite=Lax${secure ? '; Secure' : ''}`]);
+        }
         if (response.ok && result.access_token && result.refresh_token) {
           setSession(res, result);
           return json(res, response.status, { user: identity(result.access_token) });
