@@ -53,7 +53,7 @@ test('rejects cross-origin writes and paths outside the API allowlist', async t 
   const r = await fetch(f.base + '/backend/api/v1/carts', { method: 'POST', headers: { Origin: 'https://other.test', 'Content-Type': 'application/json', 'X-Pede-Client': 'web' }, body: '{}' });
   assert.equal(r.status, 403);
   assert.equal((await f.send('/backend/auth/user/7/block', 'POST', {})).status, 404);
-  assert.equal((await f.send('/backend/api/v1/orders', 'POST', {})).status, 404);
+  assert.equal((await f.send('/backend/api/v1/webhooks/uazapi', 'POST', {})).status, 404);
   assert.equal((await f.send('/backend/https://other.test')).status, 404);
   assert.equal(f.seen.length, 0);
 });
