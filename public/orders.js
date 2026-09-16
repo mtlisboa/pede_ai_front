@@ -45,17 +45,14 @@ function route() {
   return location.hash.slice(1).split('/');
 }
 
-function panel(title, body) {
-  return `<section class="panel"><h2>${title}</h2>${body}</section>`;
-}
-
 function empty(title, text) {
   return `<section class="empty"><span class="empty-symbol" aria-hidden="true">○</span><h2>${title}</h2><p>${text}</p></section>`;
 }
 
 function statusBadge(value) {
-  const green = ['DELIVERED', 'PAID', 'MANUAL_CONFIRMED'].includes(value);
-  return `<span class="status ${green ? 'green' : value === 'CANCELLED' ? 'neutral' : ''}">${h(STATUS[value] || PAYMENT_STATUS[value] || value || '—')}</span>`;
+  const green = ['DELIVERED', 'PAID', 'MANUAL_CONFIRMED', 'APPROVED'].includes(value);
+  const neutral = ['CANCELLED', 'REJECTED'].includes(value);
+  return `<span class="status ${green ? 'green' : neutral ? 'neutral' : ''}">${h(STATUS[value] || PAYMENT_STATUS[value] || value || '—')}</span>`;
 }
 
 async function getSession(force = false) {
@@ -94,14 +91,14 @@ function orderSummary(order) {
 async function renderOrders() {
   const session = await getSession(true);
   if (!session.user) {
-    main.innerHTML = `${empty('Entre para consultar seus pedidos', 'Seu histórico fica disponível depois do login.')}<p><a class="button primary" href="#entrar">Entrar</a></p>`;
+    main.innerHTML = `<div data-orders-owned>${empty('Entre para consultar seus pedidos', 'Seu histórico fica disponível depois do login.')}<p><a class="button primary" href="#entrar">Entrar</a></p></div>`;
     return;
   }
   main.innerHTML = '<div class="loading" role="status">Carregando pedidos…</div>';
   const data = await api('/api/v1/orders?limit=50&offset=0');
   const operator = isOperator(session.user);
-  main.innerHTML = `<div class="page-heading"><div><p class="eyebrow">${operator ? 'OPERAÇÃO DA LOJA' : 'MINHA CONTA'}</p><h1>${operator ? 'Pedidos da loja' : 'Meus pedidos'}</h1></div><button type="button" class="button ghost" data-order-action="refresh-orders">Atualizar</button></div>
-    ${data.items?.length ? `<div class="section">${data.items.map(orderSummary).join('')}</div>` : empty('Nenhum pedido por aqui', operator ? 'Os novos pedidos aparecerão nesta lista.' : 'Finalize uma sacola para criar seu primeiro pedido.')}`;
+  main.innerHTML = `<div data-orders-owned><div class="page-heading"><div><p class="eyebrow">${operator ? 'OPERAÇÃO DA LOJA' : 'MINHA CONTA'}</p><h1>${operator ? 'Pedidos da loja' : 'Meus pedidos'}</h1></div><button type="button" class="button ghost" data-order-action="refresh-orders">Atualizar</button></div>
+    ${data.items?.length ? `<div class="section">${data.items.map(orderSummary).join('')}</div>` : empty('Nenhum pedido por aqui', operator ? 'Os novos pedidos aparecerão nesta lista.' : 'Finalize uma sacola para criar seu primeiro pedido.')}</div>`;
 }
 
 function nextStatus(order) {
@@ -138,7 +135,7 @@ function receiptHTML(orderId, receipt, operator) {
 async function renderOrderDetail(id) {
   const session = await getSession(true);
   if (!session.user) {
-    main.innerHTML = `${empty('Entre para consultar este pedido', 'O pedido só pode ser acessado por seu cliente ou pela loja responsável.')}<p><a class="button primary" href="#entrar">Entrar</a></p>`;
+    main.innerHTML = `<div data-orders-owned>${empty('Entre para consultar este pedido', 'O pedido só pode ser acessado por seu cliente ou pela loja responsável.')}<p><a class="button primary" href="#entrar">Entrar</a></p></div>`;
     return;
   }
   main.innerHTML = '<div class="loading" role="status">Carregando pedido…</div>';
@@ -150,7 +147,7 @@ async function renderOrderDetail(id) {
   const advance = operator ? nextStatus(order) : null;
   const canCancel = order.status === 'PENDING' || (operator && order.status === 'CONFIRMED');
   const address = order.delivery_address_snapshot;
-  main.innerHTML = `<div class="page-heading"><div><p class="eyebrow">PEDIDO #${h(order.order_number)}</p><h1>${h(STATUS[order.status] || order.status)}</h1></div><a class="button ghost" href="#pedidos">Todos os pedidos</a></div>
+  main.innerHTML = `<div data-orders-owned><div class="page-heading"><div><p class="eyebrow">PEDIDO #${h(order.order_number)}</p><h1>${h(STATUS[order.status] || order.status)}</h1></div><a class="button ghost" href="#pedidos">Todos os pedidos</a></div>
     <div class="cart-layout">
       <section class="panel cart-items">
         ${order.items.map(item => `<article class="cart-item"><div class="item-heading"><h3>${item.quantity}× ${h(item.product_name)}</h3><strong>${money(item.total_price)}</strong></div>${item.options.map(option => `<p class="item-option">${option.quantity}× ${h(option.option_name)}</p>`).join('')}${item.observation ? `<p class="observation">${h(item.observation)}</p>` : ''}</article>`).join('')}
@@ -167,7 +164,7 @@ async function renderOrderDetail(id) {
       </aside>
     </div>
     <section class="section"><div class="section-heading"><h2>Pagamentos</h2></div>${order.payments.length ? order.payments.map(payment => paymentHTML(payment, operator)).join('') : empty('Sem cobrança', 'Este pedido ainda não possui cobrança registrada.')}</section>
-    <section class="section"><div class="section-heading"><h2>Comprovantes</h2></div>${receipts.length ? receipts.map(receipt => receiptHTML(order.id_order, receipt, operator)).join('') : empty('Nenhum comprovante recebido', order.payment_method === 'PIX' ? 'Quando um arquivo válido for associado à cobrança pelo WhatsApp, ele aparecerá aqui.' : 'Este método de pagamento não exige comprovante.')}</section>`;
+    <section class="section"><div class="section-heading"><h2>Comprovantes</h2></div>${receipts.length ? receipts.map(receipt => receiptHTML(order.id_order, receipt, operator)).join('') : empty('Nenhum comprovante recebido', order.payment_method === 'PIX' ? 'Quando um arquivo válido for associado à cobrança pelo WhatsApp, ele aparecerá aqui.' : 'Este método de pagamento não exige comprovante.')}</section></div>`;
 }
 
 function checkoutStoreId() {
@@ -290,9 +287,10 @@ async function addPartnerOrdersCard() {
 
 async function syncView() {
   if (rendering) return;
+  const [page, id] = route();
+  if (['pedidos', 'pedido'].includes(page) && main.querySelector('[data-orders-owned]')) return;
   rendering = true;
   try {
-    const [page, id] = route();
     if (page === 'pedidos') await renderOrders();
     else if (page === 'pedido' && positiveId(id)) await renderOrderDetail(positiveId(id));
     else {
@@ -301,7 +299,7 @@ async function syncView() {
     }
   } catch (error) {
     if (['pedidos', 'pedido'].includes(route()[0])) {
-      main.innerHTML = `${empty('Não foi possível carregar', h(error.message || 'Tente novamente.'))}<p><button type="button" class="button primary" data-order-action="refresh-orders">Tentar novamente</button></p>`;
+      main.innerHTML = `<div data-orders-owned>${empty('Não foi possível carregar', h(error.message || 'Tente novamente.'))}<p><button type="button" class="button primary" data-order-action="refresh-orders">Tentar novamente</button></p></div>`;
     }
   } finally {
     rendering = false;
