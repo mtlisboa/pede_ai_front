@@ -23,6 +23,15 @@ const ROUTES = [
   [/^\/api\/v1\/carts\/current\/items\/\d+$/, ['PUT', 'PATCH', 'DELETE']],
   [/^\/api\/v1\/carts\/current\/(validate|checkout)$/, ['POST']],
   [/^\/api\/v1\/carts\/\d+\/cancel-checkout$/, ['POST']],
+  [/^\/api\/v1\/orders$/, ['GET', 'POST']],
+  [/^\/api\/v1\/orders\/\d+$/, ['GET', 'PUT', 'PATCH', 'DELETE']],
+  [/^\/api\/v1\/orders\/\d+\/status$/, ['PATCH']],
+  [/^\/api\/v1\/orders\/\d+\/payments$/, ['GET', 'POST']],
+  [/^\/api\/v1\/orders\/\d+\/payments\/\d+$/, ['GET', 'PUT', 'DELETE']],
+  [/^\/api\/v1\/orders\/\d+\/payments\/\d+\/confirm$/, ['POST']],
+  [/^\/api\/v1\/orders\/\d+\/receipts$/, ['GET']],
+  [/^\/api\/v1\/orders\/\d+\/receipts\/\d+\/content$/, ['GET']],
+  [/^\/api\/v1\/orders\/\d+\/receipts\/\d+\/review$/, ['POST']],
   [/^\/api\/v1\/kitchen\/tickets(?:\/\d+)?$/, ['GET']],
   [/^\/api\/v1\/kitchen\/tickets\/\d+\/(claim|ready)$/, ['POST']],
 ];
@@ -155,6 +164,18 @@ export function createApp(options = {}) {
         if (response.status === 204) {
           if (target === '/api/v1/users/me' && req.method === 'DELETE') setSession(res, null);
           res.writeHead(204, { 'Cache-Control': 'no-store' }); return res.end();
+        }
+        const isReceiptContent = /^\/api\/v1\/orders\/\d+\/receipts\/\d+\/content$/.test(target);
+        if (isReceiptContent && response.ok) {
+          const contentType = response.headers.get('content-type') || 'application/octet-stream';
+          const disposition = response.headers.get('content-disposition') || 'attachment; filename="comprovante"';
+          res.writeHead(response.status, {
+            'Content-Type': contentType,
+            'Content-Disposition': disposition,
+            'X-Content-Type-Options': 'nosniff',
+            'Cache-Control': 'no-store',
+          });
+          return res.end(Buffer.from(await response.arrayBuffer()));
         }
         if (!(response.headers.get('content-type') || '').includes('application/json')) return json(res, 502, { detail: 'O serviço retornou uma resposta inesperada.' });
         const result = await response.json();
