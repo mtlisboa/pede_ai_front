@@ -115,3 +115,25 @@ test('only proxies valid product images and includes the authenticated token', a
   assert.equal(f.seen[0].auth, `Bearer ${token()}`);
   assert.equal((await f.send('/media/products/other/file.png')).status, 400);
 });
+
+test('product photo upload preserves binary bytes and remains protected by origin checks', async t => {
+  const f = await fixture(t);
+  const data = Buffer.from([0, 255, 128, 13, 10, 42]);
+  const upstream = createServer(async (req, res) => {
+    const chunks = []; for await (const chunk of req) chunks.push(chunk);
+    assert.deepEqual(Buffer.concat(chunks), data);
+    assert.equal(req.headers['content-type'], 'application/octet-stream');
+    assert.equal(req.headers.authorization, 'Bearer owner');
+    res.writeHead(200, { 'Content-Type': 'application/json' }); res.end('{"image_url":"/uploads/products/test.webp"}');
+  }).listen(0, '127.0.0.1');
+  await once(upstream, 'listening');
+  const front = createApp({ upstream: `http://127.0.0.1:${upstream.address().port}` }).listen(0, '127.0.0.1');
+  await once(front, 'listening');
+  t.after(() => { front.closeAllConnections(); upstream.closeAllConnections(); front.close(); upstream.close(); });
+  const base = `http://127.0.0.1:${front.address().port}`;
+  const headers = { Origin: base, 'X-Pede-Client': 'web', 'Content-Type': 'application/octet-stream', Cookie: 'pede_access=owner' };
+  assert.equal((await fetch(base + '/backend/api/v1/products/1/image', { method: 'POST', headers, body: data })).status, 200);
+  assert.equal((await fetch(base + '/backend/api/v1/products/1/image', { method: 'POST', headers: { ...headers, Origin: 'https://foreign.example' }, body: data })).status, 403);
+  assert.equal((await fetch(base + '/backend/api/v1/products', { method: 'POST', headers, body: data })).status, 415);
+  for (const path of ['manage', 'categories']) assert.equal((await f.send('/backend/api/v1/products/' + path)).status, 200);
+});

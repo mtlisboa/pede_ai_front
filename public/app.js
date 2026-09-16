@@ -112,18 +112,26 @@ function checkoutView() {
 function partnerHome() {
   main.innerHTML = `${heading('ÁREA DO ESTABELECIMENTO', `Olá, ${h(state.user.name.split(' ')[0])}`)}<div class="dashboard-grid"><a class="panel dashboard-card" href="#produtos"><span class="dashboard-icon" aria-hidden="true">▦</span><h2>Meu cardápio</h2><p>Cadastre produtos, ajuste preços e controle a disponibilidade.</p><strong>Gerenciar produtos →</strong></a><a class="panel dashboard-card" href="#cozinha"><span class="dashboard-icon" aria-hidden="true">▤</span><h2>Cozinha</h2><p>Receba tickets, inicie o preparo e sinalize os pedidos prontos.</p><strong>Abrir fila de preparo →</strong></a></div>${note('Pedidos, financeiro, campanhas e integrações serão disponibilizados conforme os serviços da loja forem habilitados.')}`;
 }
+let productCategories = [];
 async function productsView() {
   if (!operator()) return login(true);
-  if (!state.store) { main.innerHTML = `${heading('MEU CARDÁPIO', 'Selecione sua loja')}<div class="panel narrow"><form data-form="admin-store">${field('Código da sua loja', 'store', 'number', '', 'required min="1" step="1"')}<button class="button primary">Gerenciar cardápio</button></form></div>`; return; }
   const epoch = state.epoch;
-  const data = await api(`/api/v1/products?${new URLSearchParams({ store_id: state.store, page: state.page, page_size: 20, ...(state.query ? { q: state.query } : {}) })}`);
+  const [data, categories] = await Promise.all([
+    api(`/api/v1/products/manage?${new URLSearchParams({ page: state.page, page_size: 20, ...(state.query ? { q: state.query } : {}) })}`),
+    api('/api/v1/products/categories'),
+  ]);
+  productCategories = categories;
   if (epoch !== state.epoch) return;
   state.products = data.items;
-  main.innerHTML = `${heading('GESTÃO DO CARDÁPIO', h(storeName()), button('+ Novo produto', 'new-product'))}<div class="panel"><form class="search-row" data-form="search">${field('Buscar produto', 'query', 'search', state.query, 'maxlength="120"')}<button class="button primary">Buscar</button>${button('Trocar loja', 'change-store', '', 'ghost')}</form>${data.items.length ? `<div class="table-scroll"><table><thead><tr><th>Produto</th><th>Preço</th><th>Disponibilidade</th><th>Ações</th></tr></thead><tbody>${data.items.map(p => `<tr><td><strong>${h(p.name)}</strong><small>Categoria ${p.id_category}${p.is_featured ? ' · Destaque' : ''}</small></td><td>${money(p.base_price)}</td><td><span class="status ${p.is_available ? 'green' : 'neutral'}">${p.is_available ? 'Disponível' : 'Pausado'}</span></td><td><div class="table-actions">${button('Editar', 'edit-product', `data-id="${p.id_product}"`, 'ghost small')}${button(p.is_available ? 'Pausar' : 'Disponibilizar', 'toggle-product', `data-id="${p.id_product}"`, 'ghost small')}${button('Excluir', 'delete-product', `data-id="${p.id_product}"`, 'text-danger small')}</div></td></tr>`).join('')}</tbody></table></div><nav class="pagination" aria-label="Páginas dos produtos">${button('← Anterior', 'page', `data-page="${state.page - 1}" ${state.page <= 1 ? 'disabled' : ''}`, 'ghost')}<span>${state.page} / ${Math.ceil(data.total / data.page_size)}</span>${button('Próxima →', 'page', `data-page="${state.page + 1}" ${state.page * data.page_size >= data.total ? 'disabled' : ''}`, 'ghost')}</nav>` : empty('Nenhum produto nesta lista', 'Cadastre um produto ou altere sua busca.')}</div>`;
+  main.innerHTML = `${heading('GESTÃO DO CARDÁPIO', 'Meus produtos', button('+ Novo produto', 'new-product'))}<div class="panel"><form class="search-row" data-form="search">${field('Buscar produto', 'query', 'search', state.query, 'maxlength="120"')}<button class="button primary">Buscar</button>${button('+ Categoria', 'new-category', '', 'ghost')}</form>${data.items.length ? `<div class="table-scroll"><table><thead><tr><th>Produto</th><th>Preço</th><th>Disponibilidade</th><th>Ações</th></tr></thead><tbody>${data.items.map(p => `<tr><td><strong>${h(p.name)}</strong><small>${h(productCategories.find(c => c.id_category === p.id_category)?.name || 'Sem categoria')}${p.is_featured ? ' · Destaque' : ''}</small></td><td>${money(p.base_price)}</td><td><span class="status ${p.is_available ? 'green' : 'neutral'}">${!p.is_active ? 'Inativo' : p.is_available ? 'Disponível' : 'Pausado'}</span></td><td><div class="table-actions">${button('Editar', 'edit-product', `data-id="${p.id_product}"`, 'ghost small')}${button(p.is_available ? 'Pausar' : 'Disponibilizar', 'toggle-product', `data-id="${p.id_product}"`, 'ghost small')}${button('Excluir', 'delete-product', `data-id="${p.id_product}"`, 'text-danger small')}</div></td></tr>`).join('')}</tbody></table></div><nav class="pagination" aria-label="Páginas dos produtos">${button('← Anterior', 'page', `data-page="${state.page - 1}" ${state.page <= 1 ? 'disabled' : ''}`, 'ghost')}<span>${state.page} / ${Math.ceil(data.total / data.page_size)}</span>${button('Próxima →', 'page', `data-page="${state.page + 1}" ${state.page * data.page_size >= data.total ? 'disabled' : ''}`, 'ghost')}</nav>` : empty('Nenhum produto nesta lista', 'Cadastre um produto ou altere sua busca.')}</div>`;
 }
 function productEditor(id) {
+  if (!productCategories.length) { categoryEditor(); return; }
   const p = state.products.find(p => p.id_product === id) || {};
-  modalOpen(`<h2 id="modal-title">${id ? 'Editar produto' : 'Novo produto'}</h2><form data-form="product-save" data-id="${id || ''}">${field('Nome', 'name', 'text', p.name || '', 'required minlength="2" maxlength="120"')}<div class="form-grid">${field('Preço (R$)', 'base_price', 'number', p.base_price ?? '', 'required min="0" max="99999999.99" step="0.01"')}${field('Código da categoria existente', 'id_category', 'number', p.id_category || '', 'required min="1" step="1"')}</div><label>Descrição<textarea name="description" maxlength="5000">${h(p.description || '')}</textarea></label><div class="form-grid">${field('Preparo em minutos (opcional)', 'preparation_time_minutes', 'number', p.preparation_time_minutes ?? '', 'min="0" step="1"')}${field('SKU (opcional)', 'sku', 'text', p.sku || '', 'maxlength="80"')}</div>${field('Caminho da imagem na loja', 'image_url', 'text', p.image_url || '/uploads/products/default.svg', 'required maxlength="500"')}<p class="small-copy">Use uma imagem já cadastrada em /uploads/products/. O envio de imagens e o cadastro de categorias ainda não estão disponíveis.</p><div class="checks">${[['is_active', 'Ativo', true], ['is_available', 'Disponível', true], ['is_featured', 'Destaque', false], ['is_sweet', 'Doce', false], ['is_savory', 'Salgado', false], ['is_solid', 'Sólido', false], ['is_snack', 'Lanche', false], ['is_beverage', 'Bebida', false], ['is_stew', 'Ensopado', false]].map(([name, label, fallback]) => `<label class="check"><input type="checkbox" name="${name}" ${(p[name] ?? fallback) ? 'checked' : ''}>${label}</label>`).join('')}</div>${field('Ordem no cardápio', 'sort_order', 'number', p.sort_order || 0, 'required min="0" step="1"')}<button class="button primary full">Salvar produto</button></form>`);
+  modalOpen(`<h2 id="modal-title">${id ? 'Editar produto' : 'Novo produto'}</h2><form data-form="product-save" data-id="${id || ''}">${field('Nome', 'name', 'text', p.name || '', 'required minlength="2" maxlength="120"')}<div class="form-grid">${field('Preço (R$)', 'base_price', 'number', p.base_price ?? '', 'required min="0" max="99999999.99" step="0.01"')}<label>Categoria<select name="id_category" required><option value="">Selecione uma categoria</option>${productCategories.map(c => `<option value="${c.id_category}" ${c.id_category === p.id_category ? 'selected' : ''}>${h(c.name)}</option>`).join('')}</select></label></div><label>Descrição<textarea name="description" maxlength="5000">${h(p.description || '')}</textarea></label><div class="form-grid">${field('Preparo em minutos (opcional)', 'preparation_time_minutes', 'number', p.preparation_time_minutes ?? '', 'min="0" step="1"')}${field('SKU (opcional)', 'sku', 'text', p.sku || '', 'maxlength="80"')}</div><input type="hidden" name="image_url" value="${h(p.image_url || '/uploads/products/default.svg')}"><label>Foto do produto<input type="file" name="photo" accept="image/jpeg,image/png,image/webp,image/avif"></label><p class="small-copy">JPG, PNG, WebP ou AVIF, até 5 MB. A foto será enviada ao salvar.</p>${p.image_url ? `<img src="${h(productImage(p.image_url))}" alt="Foto atual" width="120" height="120">` : ''}<label class="check"><input type="checkbox" name="remove_photo">Usar imagem padrão</label><div class="checks">${[['is_active', 'Ativo', true], ['is_available', 'Disponível', true], ['is_featured', 'Destaque', false], ['is_sweet', 'Doce', false], ['is_savory', 'Salgado', false], ['is_solid', 'Sólido', false], ['is_snack', 'Lanche', false], ['is_beverage', 'Bebida', false], ['is_stew', 'Ensopado', false]].map(([name, label, fallback]) => `<label class="check"><input type="checkbox" name="${name}" ${(p[name] ?? fallback) ? 'checked' : ''}>${label}</label>`).join('')}</div>${field('Ordem no cardápio', 'sort_order', 'number', p.sort_order || 0, 'required min="0" step="1"')}<button class="button primary full">Salvar produto</button></form>`);
+}
+function categoryEditor() {
+  modalOpen(`<h2 id="modal-title">Nova categoria</h2><form data-form="category-save">${field('Nome da categoria', 'name', 'text', '', 'required minlength="2" maxlength="120"')}<button class="button primary full">Salvar categoria</button></form>`);
 }
 function ticketsHTML(tickets) {
   if (!tickets.length) return empty('Tudo em dia por aqui', 'Os pedidos confirmados aparecerão nesta fila.');
@@ -197,6 +205,7 @@ document.addEventListener('click', event => {
   const el = event.target.closest('[data-action]'); if (!el || el.disabled) return;
   const name = el.dataset.action, id = positiveId(el.dataset.id);
   if (name === 'close') { modal.close(); return; }
+  if (name === 'new-category') { categoryEditor(); return; }
   if (name === 'product') { productModal(id); return; }
   if (name === 'new-product' || name === 'edit-product') { productEditor(id); return; }
   if (name === 'delete-product') { confirmDialog('Excluir produto?', 'O produto será removido do cardápio.', 'confirm-delete-product', `data-id="${id}"`); return; }
@@ -278,11 +287,25 @@ document.addEventListener('submit', event => {
       state.cart = await api(cartPath('/items'), { method: 'POST', data: { id_product: positiveId(form.dataset.id), expected_version: state.cart.version, quantity: Number(values.quantity), observation: values.observation.trim() || null, options: [] } });
       modal.close(); toast('Produto adicionado à sacola.');
     } else if (name === 'item-note') await mutateCart('PATCH', `/items/${positiveId(form.dataset.id)}`, { observation: values.observation.trim() || null });
+    else if (name === 'category-save') {
+      await api('/api/v1/products/categories', { method: 'POST', data: { name: values.name } });
+      modal.close(); await render(); toast('Categoria criada. Você já pode cadastrar produtos.');
+    }
     else if (name === 'product-save') {
+      if (values.photo?.size > 5 * 1024 * 1024) throw new Error('A foto deve ter no máximo 5 MB.');
       const data = { ...values, base_price: values.base_price, id_category: Number(values.id_category), sort_order: Number(values.sort_order), preparation_time_minutes: values.preparation_time_minutes === '' ? null : Number(values.preparation_time_minutes), sku: values.sku.trim() || null, description: values.description.trim() || null };
+      delete data.photo; delete data.remove_photo;
+      if (values.remove_photo === 'on') data.image_url = '/uploads/products/default.svg';
       for (const key of ['is_active', 'is_available', 'is_featured', 'is_sweet', 'is_savory', 'is_solid', 'is_snack', 'is_beverage', 'is_stew']) data[key] = values[key] === 'on';
       const id = positiveId(form.dataset.id);
-      await api(`/api/v1/products${id ? `/${id}` : ''}`, { method: id ? 'PUT' : 'POST', data });
+      const saved = await api(`/api/v1/products${id ? `/${id}` : ''}`, { method: id ? 'PUT' : 'POST', data });
+      form.dataset.id = saved.id_product;
+      if (values.photo?.size && values.remove_photo !== 'on') {
+        try {
+          const uploaded = await api(`/api/v1/products/${saved.id_product}/image`, { method: 'POST', data: values.photo });
+          form.elements.image_url.value = uploaded.image_url;
+        } catch (error) { throw new Error(`Produto salvo, mas a foto não foi enviada: ${error.message}. Tente salvar novamente.`); }
+      }
       modal.close(); await render(); toast('Produto salvo.');
     }
   }).catch(showError);

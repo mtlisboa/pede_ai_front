@@ -5,3 +5,5 @@
 @media(max-width:360px){.product-grid,.form-grid{grid-template-columns:1fr}.search-row>button{width:100%}.bottom-nav a{min-width:48px}}
 @media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important}}
 @media print{body{padding:0}body>header,body>main,body>nav,.toast{display:none!important}dialog{position:static;display:block;max-height:none;overflow:visible;width:80mm;margin:0;box-shadow:none;border-radius:0}dialog::backdrop{background:none}.dialog-content{padding:4mm}.dialog-content>.button,.ticket footer,.close{display:none!important}.ticket-grid{display:block}.ticket{border:0;padding:0}.ticket p,.ticket span{color:black}.ticket{break-inside:avoid}.dialog-content>h2{font-size:14pt}@page{margin:5mm}}
+
+.dialog-content select{width:100%;padding:12px;border:1px solid var(--line);border-radius:8px;background:white;color:var(--ink);font:inherit}.dialog-content img[alt="Foto atual"]{object-fit:cover;border-radius:12px}

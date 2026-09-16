@@ -6,6 +6,9 @@ import { resolve, extname, sep } from 'node:path';
 const root = resolve(fileURLToPath(new URL('./public/', import.meta.url)));
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.jpg': 'image/jpeg', '.png': 'image/png', '.svg': 'image/svg+xml', '.webp': 'image/webp' };
 const ROUTES = [
+  [/^\/api\/v1\/products\/manage$/, ['GET']],
+  [/^\/api\/v1\/products\/categories$/, ['GET', 'POST']],
+  [/^\/api\/v1\/products\/\d+\/image$/, ['POST']],
   [/^\/auth\/user\/(generate-code|verify-code|login)$/, ['POST']],
   [/^\/api\/v1\/users$/, ['POST']],
   [/^\/api\/v1\/users\/me$/, ['GET', 'PUT', 'PATCH', 'DELETE']],
@@ -38,14 +41,14 @@ function json(res, status, data) {
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
   res.end(JSON.stringify(data));
 }
-async function body(req) {
+async function body(req, limit = 1024 * 1024) {
   const chunks = []; let size = 0;
   for await (const chunk of req) {
     size += chunk.length;
-    if (size > 1024 * 1024) throw Object.assign(new Error('Requisição muito grande.'), { status: 413 });
+    if (size > limit) throw Object.assign(new Error('Requisição muito grande.'), { status: 413 });
     chunks.push(chunk);
   }
-  return Buffer.concat(chunks).toString();
+  return Buffer.concat(chunks);
 }
 
 export function createApp(options = {}) {
@@ -65,10 +68,10 @@ export function createApp(options = {}) {
       `pede_refresh=${tokens?.refresh_token || ''}; Max-Age=${age}; ${flags}`,
     ]);
   }
-  async function fetchAPI(path, method, data, access) {
+  async function fetchAPI(path, method, data, access, contentType = 'application/json') {
     return fetch(new URL(path, upstream), {
       method, redirect: 'manual', signal: AbortSignal.timeout(20000),
-      headers: { Accept: 'application/json', ...(data ? { 'Content-Type': 'application/json' } : {}), ...(access ? { Authorization: `Bearer ${access}` } : {}) },
+      headers: { Accept: 'application/json', ...(data ? { 'Content-Type': contentType } : {}), ...(access ? { Authorization: `Bearer ${access}` } : {}) },
       ...(data ? { body: data } : {}),
     });
   }
@@ -97,7 +100,7 @@ export function createApp(options = {}) {
       if (!['GET', 'HEAD'].includes(req.method)) {
         const expectedOrigin = origin || `http${secure ? 's' : ''}://${req.headers.host}`;
         if (req.headers.origin !== expectedOrigin || req.headers['sec-fetch-site'] === 'cross-site' || req.headers['x-pede-client'] !== 'web') return json(res, 403, { detail: 'Origem da requisição não permitida.' });
-        if (!(req.headers['content-type'] || '').startsWith('application/json')) return json(res, 415, { detail: 'Use application/json.' });
+        if (!(req.headers['content-type'] || '').startsWith('application/json') && !(req.method === 'POST' && /^\/backend\/api\/v1\/products\/\d+\/image$/.test(path) && req.headers['content-type'] === 'application/octet-stream')) return json(res, 415, { detail: 'Use application/json.' });
       }
       if (path === '/healthz' && req.method === 'GET') return json(res, 200, { status: 'ok' });
       if (path === '/config' && req.method === 'GET') return json(res, 200, { stores: stores.map(s => ({ id: s.id, name: s.name, description: s.description || '' })) });
@@ -124,12 +127,12 @@ export function createApp(options = {}) {
         const target = path.slice('/backend'.length);
         if (!ROUTES.some(([pattern, methods]) => pattern.test(target) && methods.includes(req.method))) return json(res, 404, { detail: 'Recurso não disponível.' });
         let access = session.pede_access;
-        const data = ['GET', 'HEAD'].includes(req.method) ? undefined : await body(req);
-        let response = await fetchAPI(target + url.search, req.method, data, access);
+        const data = ['GET', 'HEAD'].includes(req.method) ? undefined : await body(req, target.endsWith('/image') ? 5 * 1024 * 1024 : 1024 * 1024);
+        let response = await fetchAPI(target + url.search, req.method, data, access, req.headers['content-type']);
         if (response.status === 401 && session.pede_refresh && !target.startsWith('/auth/')) {
           const tokens = await refresh(session.pede_refresh);
           setSession(res, tokens); access = tokens.access_token;
-          response = await fetchAPI(target + url.search, req.method, data, access);
+          response = await fetchAPI(target + url.search, req.method, data, access, req.headers['content-type']);
         }
         if (response.status === 204) {
           if (target === '/api/v1/users/me' && req.method === 'DELETE') setSession(res, null);

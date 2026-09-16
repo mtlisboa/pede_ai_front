@@ -12,8 +12,8 @@ export async function request(path, { method = 'GET', data, signal } = {}) {
   try {
     response = await fetch(path, {
       method, credentials: 'same-origin', signal,
-      headers: { 'Content-Type': 'application/json', 'X-Pede-Client': 'web' },
-      ...(data !== undefined ? { body: JSON.stringify(data) } : {}),
+      headers: { 'Content-Type': data instanceof Blob ? 'application/octet-stream' : 'application/json', 'X-Pede-Client': 'web' },
+      ...(data !== undefined ? { body: data instanceof Blob ? data : JSON.stringify(data) } : {}),
     });
   } catch (e) {
     if (e.name === 'AbortError') throw e;
