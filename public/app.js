@@ -5,7 +5,7 @@ const main = $('#content');
 const modal = $('#modal');
 const state = { stores: [], user: null, store: null, cart: null, products: [], page: 1, query: '', filter: '', busy: false, epoch: 0, tickets: [] };
 let poll, toastTimer;
-const icons = { home: '⌂', search: '⌕', bag: '▢', user: '○', kitchen: '▤' };
+const icons = { home: '⌂', store: '▦', bag: '▣', info: 'ⓘ', user: '●', kitchen: '▤' };
 const button = (text, action, extra = '', kind = 'primary') => `<button type="button" class="button ${kind}" data-action="${action}" ${extra}>${text}</button>`;
 const field = (label, name, type = 'text', value = '', attrs = '') => `<label>${label}<input name="${name}" type="${type}" value="${h(value)}" ${attrs}></label>`;
 const note = text => `<div class="notice">${text}</div>`;
@@ -20,10 +20,23 @@ function toast(message) { $('#toast').textContent = message; $('#toast').hidden 
 function go(hash) { if (location.hash === '#' + hash) render(); else location.hash = hash; }
 function photo(product, cls = '') { const src = productImage(product.image_url); return `<div class="product-image ${cls}"><span aria-hidden="true">Sem foto</span>${src ? `<img src="${h(src)}" alt="${h(product.name)}" loading="lazy">` : ''}</div>`; }
 function nav() {
-  $('#account-nav').innerHTML = state.user ? `<a class="account-link" href="#conta">Olá, ${h(state.user.name.split(' ')[0] || 'você')}</a>` : '<a class="button ghost small" href="#entrar">Entrar</a>';
+  $('#account-nav').innerHTML = state.user
+    ? `<a class="account-link" href="#conta"><span class="account-dot" aria-hidden="true"></span>${h(state.user.name.split(' ')[0] || 'você')}</a>`
+    : '<a class="account-link guest" href="#entrar">ENTRAR</a>';
   const current = route()[0] || 'inicio';
-  const links = [['inicio', icons.home, 'Início'], [state.store ? `loja/${state.store}` : 'buscar', icons.search, 'Cardápio'], [state.store ? `sacola/${state.store}` : 'sacola', icons.bag, 'Sacola'], ['parceiro', icons.kitchen, 'Parceiro'], ['conta', icons.user, 'Conta']];
-  $('#navigation').innerHTML = links.map(([url, icon, label]) => `<a href="#${url}" ${current === url.split('/')[0] ? 'aria-current="page"' : ''}><span aria-hidden="true">${icon}</span>${label}</a>`).join('');
+  const links = [
+    ['inicio', icons.home, 'INÍCIO'],
+    [state.store ? `loja/${state.store}` : 'buscar', icons.store, 'LOJA'],
+    [state.store ? `sacola/${state.store}` : 'sacola', icons.bag, 'CARRINHO'],
+    ['info', icons.info, 'INFO'],
+    ['conta', icons.user, 'CONTA'],
+    ['parceiro', icons.kitchen, 'LOJISTA'],
+  ];
+  $('#navigation').innerHTML = links.map(([url, icon, label]) => {
+    const key = url.split('/')[0];
+    const active = current === key || (current === 'checkout' && key === 'sacola');
+    return `<a href="#${url}" ${active ? 'aria-current="page"' : ''} ${key === 'parceiro' ? 'data-merchant-link="true"' : ''}><span aria-hidden="true">${icon}</span><b>${label}</b></a>`;
+  }).join('');
 }
 function modalOpen(content) { modal.innerHTML = `${button('×', 'close', 'aria-label="Fechar janela"', 'close')}<div class="dialog-content">${content}<p class="form-error" role="alert" hidden></p></div>`; modal.showModal(); }
 function showError(error, target = modal.open ? $('.form-error', modal) : $('.form-error', main)) {
@@ -47,7 +60,50 @@ async function action(run) {
 }
 function storeForm() { return `<form data-form="store" class="search-row">${field('Código da loja', 'store', 'number', state.store || '', 'required min="1" step="1" placeholder="Ex.: 1"')}<button class="button primary">Abrir cardápio</button></form>`; }
 function home() {
-  main.innerHTML = `${heading('BATEU A FOME?', 'O que vamos pedir hoje?')}<div class="home-grid"><section class="food-banner"><img src="/assets/food.jpg" alt="Hambúrguer artesanal acompanhado de batatas fritas"><div><span class="tag">Pede Aí</span><h2>Seu cardápio.<br>Sua próxima escolha.</h2><a class="button light" href="#buscar">Encontrar uma loja <span aria-hidden="true">→</span></a></div></section><section class="panel find-store"><p class="eyebrow">DIRETO AO CARDÁPIO</p><h2>Já sabe onde pedir?</h2><p>Abra o link recebido da loja ou informe o código dela.</p>${storeForm()}</section></div><section class="section"><h2>Lojas disponíveis</h2>${state.stores.length ? `<div class="store-grid">${state.stores.map(s => `<a class="store-card" href="#loja/${s.id}"><span class="store-initial">${h(s.name.slice(0, 1))}</span><div><h3>${h(s.name)}</h3><p>${h(s.description || 'Conheça o cardápio')}</p></div><span aria-hidden="true">→</span></a>`).join('')}</div>` : note('Nenhuma loja está listada no momento. Você ainda pode abrir um cardápio pelo código ou pelo link da loja.')}</section>`;
+  const selected = state.store ? state.stores.find(s => s.id === state.store) : null;
+  main.innerHTML = `
+    <section class="p1-home">
+      <div class="p1-home-cover">
+        <img src="/assets/food.jpg" alt="Pratos disponíveis no Pede Aí">
+        <div class="p1-home-overlay">
+          <p class="p1-overline">PEDE AÍ</p>
+          <h1>Escolha sua loja e faça seu pedido.</h1>
+          <p>Cardápio online, carrinho e acompanhamento em uma experiência direta.</p>
+          <a class="button primary" href="#${selected ? `loja/${selected.id}` : 'buscar'}">${selected ? 'ABRIR CARDÁPIO' : 'ESCOLHER LOJA'}</a>
+        </div>
+      </div>
+      <div class="p1-home-toolbar">
+        <div><strong>LOJAS</strong><span>${state.stores.length} disponíveis</span></div>
+        ${storeForm()}
+      </div>
+      <section class="p1-store-directory">
+        ${state.stores.length ? state.stores.map(s => `
+          <a class="p1-directory-card" href="#loja/${s.id}">
+            <span class="p1-directory-logo">${h(s.name.slice(0,1).toUpperCase())}</span>
+            <div><strong>${h(s.name)}</strong><p>${h(s.description || 'Acesse o cardápio e confira os produtos disponíveis.')}</p></div>
+            <span class="p1-directory-arrow" aria-hidden="true">›</span>
+          </a>`).join('') : note('Nenhuma loja está listada no momento. Informe o código da loja para abrir o cardápio.')}
+      </section>
+      <a class="p1-merchant-strip" href="#parceiro"><span>É LOJISTA?</span><strong>Acesse sua operação</strong><i aria-hidden="true">›</i></a>
+    </section>`;
+}
+function storeInfo() {
+  const store = state.stores.find(s => s.id === state.store);
+  main.innerHTML = `
+    <section class="p1-info-view">
+      <div class="p1-info-cover"><img src="/assets/food.jpg" alt=""></div>
+      <div class="p1-info-head">
+        <span class="p1-store-logo">${h((store?.name || 'P').slice(0,1).toUpperCase())}</span>
+        <div><p class="p1-status"><i></i> LOJA ONLINE</p><h1>${h(store?.name || 'Pede Aí')}</h1><p>${h(store?.description || 'Informações da loja e do atendimento.')}</p></div>
+      </div>
+      <div class="p1-info-grid">
+        <article class="panel"><span class="p1-info-icon">◷</span><h2>Horário de funcionamento</h2><p>Os horários específicos serão exibidos assim que forem disponibilizados pela loja.</p></article>
+        <article class="panel"><span class="p1-info-icon">¤</span><h2>Formas de pagamento</h2><p>Pix, dinheiro e maquineta, conforme disponibilidade no checkout.</p></article>
+        <article class="panel"><span class="p1-info-icon">⌖</span><h2>Entrega e retirada</h2><p>Consulte as modalidades disponíveis ao finalizar seu carrinho.</p></article>
+        <article class="panel"><span class="p1-info-icon">◎</span><h2>Atendimento</h2><p>Use sua conta para acompanhar pedidos e informações do estabelecimento.</p></article>
+      </div>
+      <div class="p1-info-actions"><a class="button primary" href="#${state.store ? `loja/${state.store}` : 'buscar'}">VOLTAR PARA A LOJA</a></div>
+    </section>`;
 }
 function login(partner = false) {
   if (state.user && (partner ? operator() : true)) {
@@ -71,14 +127,75 @@ async function account() {
   main.innerHTML = `<section class="narrow">${heading('MINHA CONTA', h(user?.name || state.user.name))}<div class="panel">${user ? `<form data-form="profile">${field('Nome', 'name', 'text', user.name, 'required minlength="2" maxlength="120"')}${field('CPF (opcional)', 'cpf', 'text', user.cpf || '', 'inputmode="numeric" maxlength="14"')}<label>WhatsApp<input value="${h(user.phone)}" disabled></label><button class="button primary">Salvar alterações</button></form><p class="form-error" role="alert" hidden></p>` : `<p>Conta do estabelecimento</p><a class="button primary" href="#parceiro">Abrir painel</a>`}<div class="account-actions">${button('Sair da conta', 'logout', '', 'ghost')}${user ? button('Excluir minha conta', 'delete-account', '', 'text-danger') : ''}</div></div>${user ? `<div class="section"><a class="store-card" href="#pedidos"><div><h3>Meus pedidos</h3><p>Disponibilidade do acompanhamento</p></div><span aria-hidden="true">→</span></a></div>` : ''}</section>`;
 }
 async function catalog() {
-  if (!state.store) { main.innerHTML = `${heading('ENCONTRE SEU CARDÁPIO', 'Qual é a sua loja?')}<div class="panel narrow">${storeForm()}</div>`; return; }
+  if (!state.store) {
+    main.innerHTML = `<section class="p1-find-store"><div class="p1-find-cover"><img src="/assets/food.jpg" alt=""></div><div class="panel"><p class="p1-overline">LOJA</p><h1>Qual cardápio você quer abrir?</h1><p>Informe o código da loja ou volte ao início para escolher uma das lojas disponíveis.</p>${storeForm()}</div></section>`;
+    return;
+  }
   const epoch = state.epoch;
   const query = new URLSearchParams({ store_id: state.store, page: state.page, page_size: 12, ...(state.query ? { q: state.query } : {}), ...(state.filter ? { [state.filter]: true } : {}) });
-  // Use the public collection: backend dev currently protects numeric detail/store paths.
   const data = await api(`/api/v1/products?${query}`);
   if (epoch !== state.epoch) return;
   state.products = data.items;
-  main.innerHTML = `${heading('CARDÁPIO', h(storeName()), `<a class="button ghost" href="#sacola/${state.store}">Ver sacola →</a>`)}<section class="catalog-toolbar"><form data-form="search" class="search-row">${field('Buscar no cardápio', 'query', 'search', state.query, 'maxlength="120" placeholder="Qual é a sua vontade?"')}<button class="button primary">Buscar</button></form><div class="chips" aria-label="Filtros de produtos">${[['', 'Todos'], ['is_featured', 'Destaques'], ['is_available', 'Disponíveis']].map(([filter, title]) => `<button class="chip" data-action="filter" data-filter="${filter}" aria-pressed="${state.filter === filter}">${title}</button>`).join('')}</div></section><div class="section-heading"><h2>Escolha seus favoritos</h2><span>${data.total} ${data.total === 1 ? 'opção' : 'opções'}</span></div>${data.items.length ? `<div class="product-grid">${data.items.map(p => `<article class="product-card">${photo(p)}<div class="product-body"><div class="product-tags">${p.is_featured ? '<span class="tag">Destaque</span>' : ''}${(!p.is_active || !p.is_available) ? '<span class="tag neutral">Indisponível</span>' : ''}</div><h3>${h(p.name)}</h3><p>${h(p.description || 'Veja os detalhes e personalize sua escolha.')}</p><div class="product-bottom"><div><strong>${money(p.base_price)}</strong>${p.preparation_time_minutes != null ? `<small>Preparo: ${p.preparation_time_minutes} min</small>` : ''}</div>${button('+', 'product', `data-id="${p.id_product}" aria-label="Ver ${h(p.name)}"`, 'add')}</div></div></article>`).join('')}</div><nav class="pagination" aria-label="Páginas do cardápio">${button('← Anterior', 'page', `data-page="${state.page - 1}" ${state.page <= 1 ? 'disabled' : ''}`, 'ghost')}<span>Página ${state.page} de ${Math.ceil(data.total / data.page_size)}</span>${button('Próxima →', 'page', `data-page="${state.page + 1}" ${state.page * data.page_size >= data.total ? 'disabled' : ''}`, 'ghost')}</nav>` : empty('Nenhum produto encontrado', 'Tente outra busca ou volte mais tarde para conferir o cardápio.', button('Limpar filtros', 'reset-search', '', 'ghost'))}`;
+  const store = state.stores.find(s => s.id === state.store);
+  main.innerHTML = `
+    <section class="p1-catalog">
+      <div class="p1-store-cover">
+        <img src="/assets/food.jpg" alt="Imagem de capa de ${h(storeName())}">
+        <a class="p1-cart-float" href="#sacola/${state.store}" aria-label="Abrir carrinho"><span aria-hidden="true">▣</span><b>CARRINHO</b></a>
+      </div>
+      <div class="p1-store-profile">
+        <div class="p1-store-logo">${h(storeName().slice(0,1).toUpperCase())}</div>
+        <div class="p1-store-copy">
+          <p class="p1-status"><i></i> LOJA ONLINE</p>
+          <h1>${h(storeName())}</h1>
+          <p>${h(store?.description || 'Faça seu pedido pelo nosso cardápio online.')}</p>
+          <a href="#info">Mais informações</a>
+        </div>
+        <div class="p1-store-meta">
+          <span><b>¤</b><small>Taxa de entrega</small><strong>A CALCULAR</strong></span>
+          <span><b>◷</b><small>Tempo de espera</small><strong>CONSULTE</strong></span>
+        </div>
+      </div>
+      <div class="p1-banner">
+        <div><span>PEDE AÍ</span><strong>Seu pedido, do seu jeito.</strong><small>Escolha seus produtos favoritos e adicione ao carrinho.</small></div>
+      </div>
+      <section class="p1-catalog-tools">
+        <form data-form="search" class="p1-search">
+          <input aria-label="Pesquisar produto ou serviço" name="query" type="search" value="${h(state.query)}" maxlength="120" placeholder="Pesquisar produto ou serviço...">
+          <button aria-label="Pesquisar">⌕</button>
+        </form>
+        <div class="p1-categories" aria-label="Categorias">
+          ${[['', 'TODAS'], ['is_featured', 'DESTAQUES'], ['is_available', 'DISPONÍVEIS']].map(([filter,title]) => `<button class="p1-category" data-action="filter" data-filter="${filter}" aria-pressed="${state.filter === filter}">${title}</button>`).join('')}
+        </div>
+      </section>
+      <div class="p1-section-heading"><h2>${state.filter === 'is_featured' ? 'DESTAQUES' : state.filter === 'is_available' ? 'DISPONÍVEIS' : 'CARDÁPIO'}</h2><span>${data.total} ${data.total === 1 ? 'item' : 'itens'}</span></div>
+      ${data.items.length ? `<div class="p1-product-grid">${data.items.map(p => `
+        <article class="p1-product-card">
+          <button class="p1-product-image" data-action="product" data-id="${p.id_product}" aria-label="Ver ${h(p.name)}">
+            ${productImage(p.image_url) ? `<img src="${h(productImage(p.image_url))}" alt="${h(p.name)}" loading="lazy">` : '<span>SEM FOTO</span>'}
+          </button>
+          <div class="p1-product-content">
+            <div>
+              <h3>${h(p.name)}</h3>
+              <p>${h(p.description || 'Confira os detalhes deste item.')}</p>
+            </div>
+            <div class="p1-product-footer">
+              <strong>${money(p.base_price)}</strong>
+              ${p.preparation_time_minutes != null ? `<small>Preparo: ${p.preparation_time_minutes} min</small>` : ''}
+              ${p.is_featured ? '<span class="p1-product-badge">DESTAQUE</span>' : ''}
+              ${(!p.is_active || !p.is_available) ? '<span class="p1-product-badge muted">INDISPONÍVEL</span>' : ''}
+            </div>
+          </div>
+          <button class="p1-add" data-action="product" data-id="${p.id_product}" aria-label="Adicionar ${h(p.name)}">+</button>
+        </article>`).join('')}</div>
+        <nav class="pagination" aria-label="Páginas do cardápio">
+          ${button('← ANTERIOR', 'page', `data-page="${state.page - 1}" ${state.page <= 1 ? 'disabled' : ''}`, 'ghost')}
+          <span>PÁGINA ${state.page} DE ${Math.max(1, Math.ceil(data.total / data.page_size))}</span>
+          ${button('PRÓXIMA →', 'page', `data-page="${state.page + 1}" ${state.page * data.page_size >= data.total ? 'disabled' : ''}`, 'ghost')}
+        </nav>`
+      : empty('Nenhum produto encontrado', 'Tente outra busca ou altere o filtro.', button('LIMPAR FILTROS', 'reset-search', '', 'ghost'))}
+      <footer class="p1-catalog-footer"><strong>pede aí.</strong><span>Cardápio digital</span></footer>
+    </section>`;
 }
 function productModal(id) {
   const p = state.products.find(p => p.id_product === id); if (!p) return;
@@ -174,12 +291,13 @@ async function render() {
   if (['loja', 'sacola', 'checkout'].includes(page) && store && store !== state.store) { state.store = store; state.cart = null; state.page = 1; state.query = ''; }
   nav(); main.innerHTML = '<div class="loading" role="status">Carregando…</div>';
   const epoch = state.epoch;
-  document.title = `Pede Aí • ${({ loja: 'Cardápio', sacola: 'Sacola', entrar: 'Entrar', conta: 'Minha conta', cozinha: 'Cozinha', produtos: 'Produtos', parceiro: 'Parceiro', cadastro: 'Cadastro' })[page] || 'Início'}`;
+  document.title = `Pede Aí • ${({ loja: 'Loja', buscar: 'Loja', sacola: 'Carrinho', checkout: 'Carrinho', info: 'Info', entrar: 'Entrar', conta: 'Conta', cozinha: 'Cozinha', produtos: 'Produtos', parceiro: 'Lojista', cadastro: 'Cadastro', pedidos: 'Pedidos', pedido: 'Pedido' })[page] || 'Início'}`;
   try {
     if (page === 'inicio' || !page) home();
     else if (page === 'buscar' || page === 'loja') await catalog();
     else if (page === 'entrar') await login();
     else if (page === 'cadastro') registration();
+    else if (page === 'info') storeInfo();
     else if (page === 'conta') await account();
     else if (page === 'sacola' || page === 'checkout') await cartView();
     else if (page === 'parceiro') await login(true);
