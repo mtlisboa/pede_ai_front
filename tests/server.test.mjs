@@ -158,3 +158,24 @@ test('merchant OAuth binds callbacks to an HttpOnly browser nonce and keeps sess
   assert.doesNotMatch(await page.text(), /private-code/);
   assert.equal((await f.send('/oauth-callback.js')).status, 200);
 });
+
+
+test('password identifiers and contact verification pass through without creating premature sessions', async t => {
+  const f = await fixture(t, entry => entry.url === '/auth/user/login'
+    ? { status: 403, data: { detail: { error: 'contact_verification_required', message: 'Confirme seus contatos' } } }
+    : { status: 202, data: { is_valid: true, message: 'Código enviado' } });
+  const login = await f.send('/backend/auth/user/login', 'POST', { identifier: 'owner.test', password: 'example-password' });
+  assert.equal(login.status, 403);
+  assert.equal((await login.json()).detail.error, 'contact_verification_required');
+  assert.equal(login.headers.get('set-cookie'), null);
+  for (const channel of ['email', 'phone']) {
+    const data = { identifier: 'owner.test', password: 'example-password', channel };
+    const sent = await f.send('/backend/auth/credentials/request-code', 'POST', data);
+    assert.equal(sent.status, 202);
+    assert.deepEqual(JSON.parse(f.seen.at(-1).body), data);
+    assert.equal(sent.headers.get('set-cookie'), null);
+    const verified = await f.send('/backend/auth/credentials/verify-code', 'POST', { ...data, code: '123456' });
+    assert.equal(verified.status, 202);
+  }
+  assert.equal((await f.send('/backend/auth/merchant/mercado-pago/authorize', 'POST', {})).status, 404);
+});

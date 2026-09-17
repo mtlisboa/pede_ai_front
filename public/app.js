@@ -5,6 +5,7 @@ const main = $('#content');
 const modal = $('#modal');
 const state = { stores: [], user: null, store: null, cart: null, products: [], page: 1, query: '', filter: '', busy: false, epoch: 0, tickets: [] };
 let poll, toastTimer;
+let pendingCredentials = null;
 const icons = { home: '⌂', search: '⌕', bag: '▢', user: '○', kitchen: '▤' };
 const button = (text, action, extra = '', kind = 'primary') => `<button type="button" class="button ${kind}" data-action="${action}" ${extra}>${text}</button>`;
 const field = (label, name, type = 'text', value = '', attrs = '') => `<label>${label}<input name="${name}" type="${type}" value="${h(value)}" ${attrs}></label>`;
@@ -50,11 +51,12 @@ function home() {
   main.innerHTML = `${heading('BATEU A FOME?', 'O que vamos pedir hoje?')}<div class="home-grid"><section class="food-banner"><img src="/assets/food.jpg" alt="Hambúrguer artesanal acompanhado de batatas fritas"><div><span class="tag">Pede Aí</span><h2>Seu cardápio.<br>Sua próxima escolha.</h2><a class="button light" href="#buscar">Encontrar uma loja <span aria-hidden="true">→</span></a></div></section><section class="panel find-store"><p class="eyebrow">DIRETO AO CARDÁPIO</p><h2>Já sabe onde pedir?</h2><p>Abra o link recebido da loja ou informe o código dela.</p>${storeForm()}</section></div><section class="section"><h2>Lojas disponíveis</h2>${state.stores.length ? `<div class="store-grid">${state.stores.map(s => `<a class="store-card" href="#loja/${s.id}"><span class="store-initial">${h(s.name.slice(0, 1))}</span><div><h3>${h(s.name)}</h3><p>${h(s.description || 'Conheça o cardápio')}</p></div><span aria-hidden="true">→</span></a>`).join('')}</div>` : note('Nenhuma loja está listada no momento. Você ainda pode abrir um cardápio pelo código ou pelo link da loja.')}</section>`;
 }
 function login(partner = false) {
+  pendingCredentials = null;
   if (state.user && (partner ? operator() : true)) {
     if (partner) return partnerHome();
     return account();
   }
-  main.innerHTML = `<section class="auth-shell"><div class="auth-intro"><p class="eyebrow">${partner ? 'ÁREA DO ESTABELECIMENTO' : 'BEM-VINDO AO PEDE AÍ'}</p><h1>${partner ? 'Sua operação,<br>em um só lugar.' : 'Seu próximo pedido<br>começa por aqui.'}</h1><p>${partner ? 'Acesse o cardápio e a fila de preparo com sua conta de funcionário.' : 'Entre com o código enviado ao seu WhatsApp para montar sua sacola.'}</p><img src="/assets/food.jpg" alt="Hambúrguer e fritas"></div><div class="panel auth-panel"><h2>${partner ? 'Entrar como parceiro' : 'Entrar na minha conta'}</h2>${partner ? `<form data-form="employee">${field('E-mail', 'email', 'email', '', 'required autocomplete="username" maxlength="255"')}${field('Senha', 'password', 'password', '', 'required minlength="6" maxlength="255" autocomplete="current-password"')}<button class="button primary full">Entrar</button></form>` : `<form data-form="request-code">${field('WhatsApp com DDI e DDD', 'phone', 'tel', '', 'required autocomplete="tel" placeholder="55 83 99999-9999" minlength="8" maxlength="22"')}<button class="button primary full">Receber código</button></form><p class="auth-foot">Primeira vez aqui? <a href="#cadastro">Criar minha conta</a></p>`}<p class="form-error" role="alert" hidden></p><a class="muted-link" href="#${partner ? 'entrar' : 'parceiro'}">${partner ? 'Sou cliente' : 'Acesso do estabelecimento'}</a></div></section>`;
+  main.innerHTML = `<section class="auth-shell"><div class="auth-intro"><p class="eyebrow">${partner ? 'ÁREA DO ESTABELECIMENTO' : 'BEM-VINDO AO PEDE AÍ'}</p><h1>${partner ? 'Sua operação,<br>em um só lugar.' : 'Seu próximo pedido<br>começa por aqui.'}</h1><p>${partner ? 'Acesse o cardápio e a fila de preparo com sua conta de funcionário.' : 'Entre com o código enviado ao seu WhatsApp para montar sua sacola.'}</p><img src="/assets/food.jpg" alt="Hambúrguer e fritas"></div><div class="panel auth-panel"><h2>${partner ? 'Entrar como parceiro' : 'Entrar na minha conta'}</h2>${partner ? `<form data-form="employee">${field('E-mail, celular ou usuário', 'identifier', 'text', '', 'required autocomplete="username" maxlength="255"')}${field('Senha', 'password', 'password', '', 'required minlength="6" maxlength="255" autocomplete="current-password"')}<button class="button primary full">Entrar</button></form>` : `<form data-form="request-code">${field('WhatsApp com DDI e DDD', 'phone', 'tel', '', 'required autocomplete="tel" placeholder="55 83 99999-9999" minlength="8" maxlength="22"')}<button class="button primary full">Receber código</button></form><p class="auth-foot">Primeiro acesso? Sua conta é criada ao confirmar o número. Um novo login encerra a sessão anterior.</p>`}<p class="form-error" role="alert" hidden></p><a class="muted-link" href="#${partner ? 'entrar' : 'parceiro'}">${partner ? 'Sou cliente' : 'Acesso do estabelecimento'}</a></div></section>`;
 }
 function registration() {
   main.innerHTML = `<section class="narrow">${heading('PRIMEIRO PEDIDO?', 'Crie sua conta')}<div class="panel"><form data-form="register">${field('Seu nome', 'name', 'text', '', 'required minlength="2" maxlength="120" autocomplete="name"')}${field('WhatsApp com DDI e DDD', 'phone', 'tel', '', 'required autocomplete="tel" placeholder="55 83 99999-9999" minlength="8" maxlength="22"')}${field('CPF (opcional)', 'cpf', 'text', '', 'inputmode="numeric" maxlength="14"')}<button class="button primary full">Criar conta</button></form><p class="form-error" role="alert" hidden></p><p>Já tem conta? <a href="#entrar">Entrar</a></p></div></section>`;
@@ -63,12 +65,15 @@ function verification(phone) {
   main.innerHTML = `<section class="narrow">${heading('CONFIRME SEU NÚMERO', 'Confira seu WhatsApp')}<div class="panel"><p>Enviamos um código para <strong>${h(phone)}</strong>.</p><form data-form="verify" data-phone="${h(phone)}">${field('Código de 6 dígitos', 'code', 'text', '', 'required inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" autofocus')}<button class="button primary full">Confirmar e entrar</button></form><p class="form-error" role="alert" hidden></p><a href="#entrar">Usar outro número ou pedir novo código</a></div></section>`;
   $('[name="code"]').focus();
 }
+function contactVerification() {
+  main.innerHTML = `<section class="narrow">${heading('CONFIRME SEUS CONTATOS', 'Proteja sua conta')}<div class="panel"><p>Confirme o e-mail e o celular cadastrados antes do primeiro acesso.</p><section data-contact="email"><h3>E-mail</h3><form data-form="contact-send" data-channel="email"><button class="button primary">Enviar código por e-mail</button></form></section><section data-contact="phone"><h3>WhatsApp</h3><form data-form="contact-send" data-channel="phone">${field('Celular (preencha se sua conta ainda não tiver um)', 'phone_number', 'tel', '', 'autocomplete="tel" placeholder="55 83 99999-9999" maxlength="22"')}<button class="button primary">Enviar código pelo WhatsApp</button></form></section><form data-form="contacts-finish"><button class="button primary full">Concluir e entrar</button></form><p class="form-error" role="alert" hidden></p><a href="#parceiro">Voltar ao login</a></div></section>`;
+}
 async function account() {
   if (!state.user) return login();
   const epoch = state.epoch;
   const user = shopper() ? await api('/api/v1/users/me') : null;
   if (epoch !== state.epoch) return;
-  main.innerHTML = `<section class="narrow">${heading('MINHA CONTA', h(user?.name || state.user.name))}<div class="panel">${user ? `<form data-form="profile">${field('Nome', 'name', 'text', user.name, 'required minlength="2" maxlength="120"')}${field('CPF (opcional)', 'cpf', 'text', user.cpf || '', 'inputmode="numeric" maxlength="14"')}<label>WhatsApp<input value="${h(user.phone)}" disabled></label><button class="button primary">Salvar alterações</button></form><p class="form-error" role="alert" hidden></p>` : `<p>Conta do estabelecimento</p><a class="button primary" href="#parceiro">Abrir painel</a>`}<div class="account-actions">${button('Sair da conta', 'logout', '', 'ghost')}${user ? button('Excluir minha conta', 'delete-account', '', 'text-danger') : ''}</div></div>${user ? `<div class="section"><a class="store-card" href="#pedidos"><div><h3>Meus pedidos</h3><p>Disponibilidade do acompanhamento</p></div><span aria-hidden="true">→</span></a></div>` : ''}</section>`;
+  main.innerHTML = `<section class="narrow">${heading('MINHA CONTA', h(user?.name || state.user.name))}<div class="panel">${user ? `<form data-form="profile">${field('Nome', 'name', 'text', user.name, 'required minlength="2" maxlength="120"')}${field('CPF (opcional)', 'cpf', 'text', user.cpf || '', 'inputmode="numeric" maxlength="14"')}<label>WhatsApp<input value="${h(user.phone)}" disabled></label><button class="button primary">Salvar alterações</button></form><p class="form-error" role="alert" hidden></p>` : `<p>Conta operacional</p><a class="button primary" href="#parceiro">Abrir painel</a><details><summary>Definir nome de usuário</summary><form data-form="username">${field('E-mail ou celular atual', 'identifier', 'text', '', 'required autocomplete="username"')}${field('Senha atual', 'password', 'password', '', 'required autocomplete="current-password"')}${field('Novo usuário', 'username', 'text', '', 'required pattern="[a-zA-Z][a-zA-Z0-9_.-]{2,63}" minlength="3" maxlength="64"')}<button class="button primary">Salvar usuário</button></form><p class="form-error" role="alert" hidden></p></details>`}<div class="account-actions">${button('Sair da conta', 'logout', '', 'ghost')}${user ? button('Excluir minha conta', 'delete-account', '', 'text-danger') : ''}</div></div>${user ? `<div class="section"><a class="store-card" href="#pedidos"><div><h3>Meus pedidos</h3><p>Disponibilidade do acompanhamento</p></div><span aria-hidden="true">→</span></a></div>` : ''}</section>`;
 }
 async function catalog() {
   if (!state.store) { main.innerHTML = `${heading('ENCONTRE SEU CARDÁPIO', 'Qual é a sua loja?')}<div class="panel narrow">${storeForm()}</div>`; return; }
@@ -176,10 +181,11 @@ async function render() {
   const epoch = state.epoch;
   document.title = `Pede Aí • ${({ loja: 'Cardápio', sacola: 'Sacola', entrar: 'Entrar', conta: 'Minha conta', cozinha: 'Cozinha', produtos: 'Produtos', parceiro: 'Parceiro', cadastro: 'Cadastro' })[page] || 'Início'}`;
   try {
+    if (page !== 'parceiro') pendingCredentials = null;
     if (page === 'inicio' || !page) home();
     else if (page === 'buscar' || page === 'loja') await catalog();
     else if (page === 'entrar') await login();
-    else if (page === 'cadastro') registration();
+    else if (page === 'cadastro') login();
     else if (page === 'conta') await account();
     else if (page === 'sacola' || page === 'checkout') await cartView();
     else if (page === 'parceiro') await login(true);
@@ -291,10 +297,38 @@ document.addEventListener('submit', event => {
       const phone = values.phone.replace(/\D/g, '');
       await api('/auth/user/generate-code', { method: 'POST', data: { phone_number: phone } }); verification(phone);
     } else if (name === 'verify' || name === 'employee') {
-      const response = await api(name === 'verify' ? '/auth/user/verify-code' : '/auth/user/login', { method: 'POST', data: name === 'verify' ? { phone_number: form.dataset.phone, code: values.code } : values });
+      let response;
+      try {
+        response = await api(name === 'verify' ? '/auth/user/verify-code' : '/auth/user/login', { method: 'POST', data: name === 'verify' ? { phone_number: form.dataset.phone, code: values.code } : values });
+      } catch (error) {
+        if (name === 'employee' && error.code === 'contact_verification_required') {
+          pendingCredentials = { identifier: values.identifier, password: values.password };
+          contactVerification(); return;
+        }
+        throw error;
+      }
+      pendingCredentials = null;
       state.user = response.user; state.cart = null; nav();
-      if (name === 'employee') { const connection = await api('/api/v1/stores/me/mercado-pago'); go(connection.connected ? 'parceiro' : 'integracoes'); return; }
-      go(name === 'employee' ? 'parceiro' : state.store ? `loja/${state.store}` : 'inicio');
+      go(name === 'employee' ? (operator() ? 'parceiro' : 'conta') : state.store ? `loja/${state.store}` : 'inicio');
+    } else if (name === 'contact-send' || name === 'contact-confirm') {
+      if (!pendingCredentials) { go('parceiro'); return; }
+      const channel = form.dataset.channel;
+      const phone_number = values.phone_number || form.dataset.phone || undefined;
+      const data = { ...pendingCredentials, channel, ...(phone_number ? { phone_number } : {}), ...(name === 'contact-confirm' ? { code: values.code } : {}) };
+      await api(`/auth/credentials/${name === 'contact-send' ? 'request-code' : 'verify-code'}`, { method: 'POST', data });
+      if (name === 'contact-send') {
+        const container = form.closest('[data-contact]');
+        container.innerHTML = `<h3>${channel === 'email' ? 'E-mail' : 'WhatsApp'}</h3><p>Código enviado ao contato da sua conta. Válido por 5 minutos.</p><form data-form="contact-confirm" data-channel="${channel}" data-phone="${h(phone_number || '')}">${field('Código de 6 dígitos', 'code', 'text', '', 'required inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code"')}<button class="button primary">Confirmar</button></form>`;
+      } else {
+        form.closest('[data-contact]').innerHTML = `<p role="status">${channel === 'email' ? 'E-mail' : 'Celular'} confirmado ✓</p>`;
+      }
+    } else if (name === 'contacts-finish') {
+      if (!pendingCredentials) { go('parceiro'); return; }
+      const response = await api('/auth/user/login', { method: 'POST', data: pendingCredentials });
+      pendingCredentials = null; state.user = response.user; state.cart = null; nav(); go(operator() ? 'parceiro' : 'conta');
+    } else if (name === 'username') {
+      await api('/auth/credentials/username', { method: 'POST', data: values });
+      form.reset(); toast('Nome de usuário atualizado.');
     } else if (name === 'register') {
       await api('/api/v1/users', { method: 'POST', data: { name: values.name.trim(), phone: values.phone.replace(/\D/g, ''), cpf: values.cpf.replace(/\D/g, '') || null } });
       go('entrar'); toast('Conta criada. Peça seu código para entrar.');
@@ -341,3 +375,4 @@ async function boot() {
   if (session.status === 'rejected' && session.reason.status !== 401) toast('Não foi possível restaurar sua sessão. Tente novamente.');
 }
 boot();
+

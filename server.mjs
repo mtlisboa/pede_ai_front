@@ -13,6 +13,7 @@ const ROUTES = [
   [/^\/api\/v1\/products\/categories$/, ['GET', 'POST']],
   [/^\/api\/v1\/products\/\d+\/image$/, ['POST']],
   [/^\/auth\/user\/(generate-code|verify-code|login)$/, ['POST']],
+  [/^\/auth\/credentials\/(request-code|verify-code|username)$/, ['POST']],
   [/^\/api\/v1\/users$/, ['POST']],
   [/^\/api\/v1\/users\/me$/, ['GET', 'PUT', 'PATCH', 'DELETE']],
   [/^\/api\/v1\/products$/, ['GET', 'POST']],
@@ -219,3 +220,4 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   server.listen(Number(process.env.PORT || 8080), process.env.HOST || '0.0.0.0', () => console.log(`Pede Aí disponível na porta ${process.env.PORT || 8080}`));
   for (const signal of ['SIGTERM', 'SIGINT']) process.on(signal, () => server.close(() => process.exit(0)));
 }
+

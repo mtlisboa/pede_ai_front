@@ -60,7 +60,7 @@ function decorateLanding() {
           </div>
           <div class="landing-proof" aria-label="Recursos da plataforma">
             <span><strong>WhatsApp</strong>acesso rápido do cliente</span>
-            <span><strong>Mercado Pago</strong>OAuth para o lojista</span>
+            <span><strong>Acesso com senha</strong>e-mail, celular ou usuário</span>
             <span><strong>Tempo real</strong>pedidos e cozinha</span>
           </div>
         </div>
@@ -147,7 +147,7 @@ function decorate() {
   decorateNavigation();
   decorateHeader();
   decorateLanding();
-  decorateMerchantLogin();
+  // Legacy Mercado Pago login decoration retained, disabled in the active flow.
   decorateMercadoPago();
 }
 
@@ -156,3 +156,4 @@ observer.observe(document.body, { childList: true, subtree: true });
 window.addEventListener('hashchange', scheduleDecorate);
 document.addEventListener('DOMContentLoaded', scheduleDecorate);
 scheduleDecorate();
+
