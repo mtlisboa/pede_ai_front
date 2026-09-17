@@ -62,29 +62,92 @@ function storeForm() { return `<form data-form="store" class="search-row">${fiel
 function home() {
   const selected = state.store ? state.stores.find(s => s.id === state.store) : null;
   main.innerHTML = `
-    <section class="p1-home">
-      <div class="p1-home-cover">
-        <img src="/assets/food.jpg" alt="Pratos disponíveis no Pede Aí">
-        <div class="p1-home-overlay">
-          <p class="p1-overline">PEDE AÍ</p>
-          <h1>Escolha sua loja e faça seu pedido.</h1>
-          <p>Cardápio online, carrinho e acompanhamento em uma experiência direta.</p>
-          <a class="button primary" href="#${selected ? `loja/${selected.id}` : 'buscar'}">${selected ? 'ABRIR CARDÁPIO' : 'ESCOLHER LOJA'}</a>
+    <section class="landing-page">
+      <section class="landing-main">
+        <div class="landing-copy">
+          <p class="landing-eyebrow">PEDE AÍ</p>
+          <h1>Seu pedido começa<br>com poucos cliques.</h1>
+          <p class="landing-lead">Encontre restaurantes, escolha seus produtos, monte o carrinho e acompanhe o pedido em um só lugar.</p>
+          <div class="landing-cta-row">
+            <a class="button primary landing-primary" href="#${selected ? `loja/${selected.id}` : 'buscar'}">${selected ? 'ABRIR ÚLTIMA LOJA' : 'EXPLORAR LOJAS'}</a>
+            <a class="button landing-quick-link" href="#pedido-rapido">PEDIDO RÁPIDO <span aria-hidden="true">→</span></a>
+          </div>
+          <div class="landing-trust">
+            <span><b>01</b> Escolha a loja</span>
+            <span><b>02</b> Monte o pedido</span>
+            <span><b>03</b> Acompanhe</span>
+          </div>
         </div>
-      </div>
-      <div class="p1-home-toolbar">
-        <div><strong>LOJAS</strong><span>${state.stores.length} disponíveis</span></div>
-        ${storeForm()}
-      </div>
-      <section class="p1-store-directory">
-        ${state.stores.length ? state.stores.map(s => `
-          <a class="p1-directory-card" href="#loja/${s.id}">
-            <span class="p1-directory-logo">${h(s.name.slice(0,1).toUpperCase())}</span>
-            <div><strong>${h(s.name)}</strong><p>${h(s.description || 'Acesse o cardápio e confira os produtos disponíveis.')}</p></div>
-            <span class="p1-directory-arrow" aria-hidden="true">›</span>
-          </a>`).join('') : note('Nenhuma loja está listada no momento. Informe o código da loja para abrir o cardápio.')}
+        <div class="landing-visual" aria-hidden="true">
+          <div class="landing-phone">
+            <div class="landing-phone-top"><span>pede aí.</span><i></i></div>
+            <div class="landing-food-photo"><img src="/assets/food.jpg" alt=""></div>
+            <div class="landing-phone-copy">
+              <small>DESTAQUE</small>
+              <strong>Seu favorito está aqui.</strong>
+              <span>Cardápio, carrinho e acompanhamento.</span>
+            </div>
+            <div class="landing-phone-action"><span>VER CARDÁPIO</span><b>→</b></div>
+          </div>
+          <div class="landing-floating-card landing-floating-order">
+            <span class="landing-floating-icon">✓</span>
+            <div><small>PEDIDO CONFIRMADO</small><strong>Acompanhe em tempo real</strong></div>
+          </div>
+          <div class="landing-floating-card landing-floating-store">
+            <span class="landing-floating-icon">⌖</span>
+            <div><small>LOJAS PRÓXIMAS</small><strong>Escolha onde pedir</strong></div>
+          </div>
+        </div>
       </section>
-      <a class="p1-merchant-strip" href="#parceiro"><span>É LOJISTA?</span><strong>Acesse sua operação</strong><i aria-hidden="true">›</i></a>
+
+      <section class="landing-quick" id="pedido-rapido">
+        <div class="landing-quick-copy">
+          <p class="landing-eyebrow">PEDIDO RÁPIDO</p>
+          <h2>Já sabe onde quer pedir?</h2>
+          <p>Digite o código da loja e abra o cardápio diretamente, sem precisar navegar pela lista.</p>
+        </div>
+        <form data-form="store" class="landing-quick-form">
+          <label for="quick-store">Código da loja</label>
+          <div>
+            <input id="quick-store" name="store" type="number" value="${h(state.store || '')}" required min="1" step="1" placeholder="Ex.: 1" inputmode="numeric">
+            <button class="button primary">ABRIR CARDÁPIO</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="landing-section landing-how">
+        <div class="landing-section-heading">
+          <div><p class="landing-eyebrow">COMO FUNCIONA</p><h2>Do cardápio à entrega.</h2></div>
+          <p>Uma jornada simples para quem pede e uma operação organizada para quem vende.</p>
+        </div>
+        <div class="landing-steps">
+          <article><span>01</span><h3>Encontre uma loja</h3><p>Abra pelo link, pelo código ou escolha uma das lojas disponíveis.</p></article>
+          <article><span>02</span><h3>Monte seu carrinho</h3><p>Veja o cardápio, personalize os itens e escolha a forma de recebimento.</p></article>
+          <article><span>03</span><h3>Finalize e acompanhe</h3><p>Escolha o pagamento e acompanhe a evolução do pedido.</p></article>
+        </div>
+      </section>
+
+      <section class="landing-section landing-stores">
+        <div class="landing-section-heading">
+          <div><p class="landing-eyebrow">LOJAS</p><h2>Escolha onde pedir.</h2></div>
+          <span class="landing-store-count">${state.stores.length} ${state.stores.length === 1 ? 'loja disponível' : 'lojas disponíveis'}</span>
+        </div>
+        ${state.stores.length ? `<div class="landing-store-grid">${state.stores.slice(0,6).map(s => `
+          <a class="landing-store-card" href="#loja/${s.id}">
+            <span class="landing-store-logo">${h(s.name.slice(0,1).toUpperCase())}</span>
+            <div><strong>${h(s.name)}</strong><p>${h(s.description || 'Abra o cardápio e confira os produtos disponíveis.')}</p></div>
+            <span class="landing-store-arrow" aria-hidden="true">→</span>
+          </a>`).join('')}</div>` : note('Nenhuma loja está listada no momento. Você ainda pode abrir um cardápio usando o código da loja.')}
+      </section>
+
+      <section class="landing-merchant">
+        <div>
+          <p class="landing-eyebrow">PARA ESTABELECIMENTOS</p>
+          <h2>Sua operação também mora aqui.</h2>
+          <p>Gerencie produtos, pedidos, cozinha e integrações em um único painel.</p>
+        </div>
+        <a class="button landing-merchant-button" href="#parceiro">ACESSAR ÁREA DO LOJISTA →</a>
+      </section>
     </section>`;
 }
 function storeInfo() {
