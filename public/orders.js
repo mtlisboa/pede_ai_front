@@ -33,6 +33,14 @@ const ORDER_TYPE = {
   DELIVERY: 'Entrega',
   DINE_IN: 'No local',
 };
+const KANBAN_COLUMNS = [
+  ['received', 'Recebidos'],
+  ['preparing', 'Sendo preparados'],
+  ['ready', 'Prontos para entrega'],
+  ['out_for_delivery', 'Sendo entregues'],
+  ['delivered', 'Concluídos'],
+  ['cancelled', 'Cancelados'],
+];
 
 function showToast(message) {
   if (!toast) return;
@@ -88,17 +96,40 @@ function orderSummary(order) {
   </article>`;
 }
 
+function kanbanCard(order) {
+  const created = new Date(order.created_at).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+  return `<article class="kanban-card">
+    <div class="kanban-card-heading"><strong>#${h(order.order_number)}</strong><strong>${money(order.total_amount)}</strong></div>
+    <p>${h(order.customer_name)}<br><span>${h(order.customer_phone)}</span></p>
+    <p>${h(ORDER_TYPE[order.order_type] || order.order_type)} · ${created}</p>
+    <a class="button ghost small full" href="#pedido/${order.id_order}">Ver pedido</a>
+  </article>`;
+}
+
+function kanbanHTML(data) {
+  return `<div class="order-kanban" aria-label="Quadro de pedidos">${KANBAN_COLUMNS.map(([key, title]) => {
+    const orders = data.columns?.[key] || [];
+    const total = Number(data.totals?.[key] || 0);
+    const hidden = Math.max(0, total - orders.length);
+    return `<section class="kanban-column kanban-${key}">
+      <header><h2>${title}</h2><span>${total}</span></header>
+      <div class="kanban-list">${orders.length ? orders.map(kanbanCard).join('') : '<p class="kanban-empty">Nenhum pedido</p>'}</div>
+      ${hidden ? `<p class="kanban-overflow">+ ${hidden} pedido${hidden === 1 ? '' : 's'} fora da visualização inicial</p>` : ''}
+    </section>`;
+  }).join('')}</div>`;
+}
+
 async function renderOrders() {
   const session = await getSession(true);
   if (!session.user) {
     main.innerHTML = `<div data-orders-owned>${empty('Entre para consultar seus pedidos', 'Seu histórico fica disponível depois do login.')}<p><a class="button primary" href="#entrar">Entrar</a></p></div>`;
     return;
   }
-  main.innerHTML = '<div class="loading" role="status">Carregando pedidos…</div>';
-  const data = await api('/api/v1/orders?limit=50&offset=0');
   const operator = isOperator(session.user);
+  main.innerHTML = '<div class="loading" role="status">Carregando pedidos…</div>';
+  const data = await api(operator ? '/api/v1/orders/kanban' : '/api/v1/orders?limit=50&offset=0');
   main.innerHTML = `<div data-orders-owned><div class="page-heading"><div><p class="eyebrow">${operator ? 'OPERAÇÃO DA LOJA' : 'MINHA CONTA'}</p><h1>${operator ? 'Pedidos da loja' : 'Meus pedidos'}</h1></div><button type="button" class="button ghost" data-order-action="refresh-orders">Atualizar</button></div>
-    ${data.items?.length ? `<div class="section">${data.items.map(orderSummary).join('')}</div>` : empty('Nenhum pedido por aqui', operator ? 'Os novos pedidos aparecerão nesta lista.' : 'Finalize uma sacola para criar seu primeiro pedido.')}</div>`;
+    ${operator ? kanbanHTML(data) : data.items?.length ? `<div class="section">${data.items.map(orderSummary).join('')}</div>` : empty('Nenhum pedido por aqui', 'Finalize uma sacola para criar seu primeiro pedido.')}</div>`;
 }
 
 function nextStatus(order) {
@@ -130,6 +161,15 @@ function receiptHTML(orderId, receipt, operator) {
     <div><h3>Comprovante #${receipt.id_receipt}</h3><p>${h(receipt.mime_type)} · ${(Number(receipt.size_bytes || 0) / 1024).toFixed(1)} KB</p><p>${statusBadge(receipt.status)}</p>${receipt.review_note ? `<p>${h(receipt.review_note)}</p>` : ''}</div>
     <div><a class="button ghost small" href="/backend/api/v1/orders/${orderId}/receipts/${receipt.id_receipt}/content">Baixar</a>${review}</div>
   </article>`;
+}
+
+function historyHTML(history = []) {
+  if (!history.length) return empty('Sem movimentações', 'O histórico deste pedido ainda não possui registros.');
+  return `<ol class="order-history">${history.map(entry => {
+    const title = entry.from_status ? `${STATUS[entry.from_status] || entry.from_status} → ${STATUS[entry.to_status] || entry.to_status}` : 'Pedido criado';
+    const actor = entry.changed_by_role === 'USER' ? 'Cliente' : entry.changed_by_role === 'EMPLOYEE' ? 'Equipe da loja' : 'Sistema';
+    return `<li><span class="history-marker" aria-hidden="true"></span><div><strong>${h(title)}</strong><p>${new Date(entry.created_at).toLocaleString('pt-BR')} · ${actor}</p>${entry.note ? `<p class="history-note">${h(entry.note)}</p>` : ''}</div></li>`;
+  }).join('')}</ol>`;
 }
 
 async function renderOrderDetail(id) {
@@ -164,6 +204,7 @@ async function renderOrderDetail(id) {
         ${canCancel ? `<button type="button" class="button text-danger full" data-order-action="cancel-order" data-id="${order.id_order}" data-version="${order.version}">Cancelar pedido</button>` : ''}
       </aside>
     </div>
+    <section class="section panel"><div class="section-heading"><h2>Histórico do pedido</h2></div>${historyHTML(order.history)}</section>
     <section class="section"><div class="section-heading"><h2>Pagamentos</h2></div>${order.payments.length ? order.payments.map(payment => paymentHTML(payment, operator)).join('') : empty('Sem cobrança', 'Este pedido ainda não possui cobrança registrada.')}</section>
     <section class="section"><div class="section-heading"><h2>Comprovantes</h2></div>${receipts.length ? receipts.map(receipt => receiptHTML(order.id_order, receipt, operator)).join('') : empty('Nenhum comprovante recebido', order.payment_method === 'PIX' ? 'Quando um arquivo válido for associado à cobrança pelo WhatsApp, ele aparecerá aqui.' : 'Este método de pagamento não exige comprovante.')}</section></div>`;
 }
@@ -248,8 +289,11 @@ async function orderAction(button) {
   if (action === 'refresh-orders') return renderOrders();
   const orderId = positiveId(button.dataset.id || button.dataset.order);
   if (action === 'cancel-order') {
-    if (!confirm('Cancelar este pedido?')) return;
-    await api(`/api/v1/orders/${orderId}?expected_version=${positiveId(button.dataset.version)}`, { method: 'DELETE' });
+    const reason = prompt('Descrição do cancelamento (opcional). Deixe vazio para cancelar sem descrição:');
+    if (reason === null) return;
+    await api(`/api/v1/orders/${orderId}/status`, { method: 'PATCH', data: {
+      expected_version: positiveId(button.dataset.version), status: 'CANCELLED', reason: reason.trim() || null,
+    } });
     showToast('Pedido cancelado.');
     return renderOrderDetail(orderId);
   }

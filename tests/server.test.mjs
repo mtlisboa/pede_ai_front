@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
+import { readFile } from 'node:fs/promises';
 import { createApp } from '../server.mjs';
 
 const token = (suffix = 'old') => `header.${Buffer.from(JSON.stringify({ sub: '7', name: 'Cliente', role: 'SHOPPER' })).toString('base64url')}.${suffix}`;
@@ -108,6 +109,29 @@ test('forwards real kitchen transitions and preserves errors', async t => {
   assert.equal((await claim.json()).status, 'PREPARING');
   const ready = await f.send('/backend/api/v1/kitchen/tickets/12/ready', 'POST', {});
   assert.equal(ready.status, 409);
+});
+
+test('orders UI contains six-column kanban, history and optional cancellation reason', async () => {
+  const [orders, theme] = await Promise.all([
+    readFile(new URL('../public/orders.js', import.meta.url), 'utf8'),
+    readFile(new URL('../public/theme.css', import.meta.url), 'utf8'),
+  ]);
+  for (const column of ['received', 'preparing', 'ready', 'out_for_delivery', 'delivered', 'cancelled']) {
+    assert.match(orders, new RegExp(`\\['${column}'`));
+  }
+  assert.match(orders, /\/api\/v1\/orders\/kanban/);
+  assert.match(orders, /Histórico do pedido/);
+  assert.match(orders, /Descrição do cancelamento \(opcional\)/);
+  assert.match(theme, /\.order-kanban/);
+});
+
+test('forwards the authenticated order kanban endpoint', async t => {
+  const f = await fixture(t, entry => ({ data: { url: entry.url } }));
+  const cookie = `pede_access=${token('operator')}`;
+  const response = await f.send('/backend/api/v1/orders/kanban', 'GET', undefined, cookie);
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).url, '/api/v1/orders/kanban');
+  assert.equal(f.seen[0].auth, `Bearer ${token('operator')}`);
 });
 
 test('does not turn HTML upstream errors into successful API responses', async t => {

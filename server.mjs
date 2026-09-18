@@ -26,6 +26,7 @@ const ROUTES = [
   [/^\/api\/v1\/carts\/current\/(validate|checkout)$/, ['POST']],
   [/^\/api\/v1\/carts\/\d+\/cancel-checkout$/, ['POST']],
   [/^\/api\/v1\/orders$/, ['GET', 'POST']],
+  [/^\/api\/v1\/orders\/kanban$/, ['GET']],
   [/^\/api\/v1\/orders\/\d+$/, ['GET', 'PUT', 'PATCH', 'DELETE']],
   [/^\/api\/v1\/orders\/\d+\/status$/, ['PATCH']],
   [/^\/api\/v1\/orders\/\d+\/payments$/, ['GET', 'POST']],
