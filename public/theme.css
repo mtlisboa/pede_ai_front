@@ -1317,3 +1317,47 @@ body.route-inicio main{
   .landing-floating-order{right:-5px}
   .landing-floating-store{left:-5px}
 }
+
+.order-kanban{
+  display:grid;
+  grid-template-columns:repeat(6,minmax(270px,1fr));
+  gap:16px;
+  overflow-x:auto;
+  align-items:start;
+  padding:4px 2px 24px;
+  scroll-snap-type:x proximity;
+}
+.kanban-column{
+  background:#f5f5f3;
+  border:1px solid var(--line);
+  border-radius:16px;
+  min-height:360px;
+  padding:14px;
+  scroll-snap-align:start;
+}
+.kanban-column>header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px}
+.kanban-column>header h2{font-size:1rem;margin:0}
+.kanban-column>header span{display:grid;place-items:center;min-width:28px;height:28px;padding:0 8px;border-radius:999px;background:#fff;font-weight:800;font-size:.8rem}
+.kanban-list{display:grid;gap:12px}
+.kanban-card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:15px;box-shadow:0 5px 18px #0000000a}
+.kanban-card-heading{display:flex;justify-content:space-between;gap:12px;margin-bottom:12px}
+.kanban-card p{font-size:.8rem;line-height:1.5;margin:0 0 10px}
+.kanban-card p span{color:var(--muted)}
+.kanban-empty,.kanban-overflow{font-size:.8rem;text-align:center;margin:24px 8px;color:var(--muted)}
+.kanban-overflow{margin:14px 4px 2px;font-weight:700}
+.kanban-received{border-top:4px solid #858585}
+.kanban-preparing{border-top:4px solid #ce9508}
+.kanban-ready{border-top:4px solid #257047}
+.kanban-out_for_delivery{border-top:4px solid #146ec2}
+.kanban-delivered{border-top:4px solid #252525}
+.kanban-cancelled{border-top:4px solid var(--brand)}
+.order-history{list-style:none;margin:0;padding:0}
+.order-history li{position:relative;display:grid;grid-template-columns:22px 1fr;gap:12px;padding-bottom:22px}
+.order-history li:not(:last-child):before{content:"";position:absolute;left:6px;top:13px;bottom:0;width:2px;background:var(--line)}
+.history-marker{width:14px;height:14px;margin-top:4px;border-radius:50%;background:var(--brand);border:3px solid #fff;box-shadow:0 0 0 1px var(--brand);z-index:1}
+.order-history p{font-size:.85rem;margin:4px 0 0}
+.order-history .history-note{color:var(--ink);background:#f7f7f7;border-radius:8px;padding:9px 11px}
+
+@media(max-width:700px){
+  .order-kanban{grid-template-columns:repeat(6,minmax(84vw,1fr))}
+}

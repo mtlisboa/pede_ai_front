@@ -112,3 +112,21 @@ Os testes executam o servidor real do frontend contra um servidor HTTP de teste 
 O workflow `.github/workflows/ci.yml` executa checagem, testes, build Docker e smoke test de `/healthz` e `/` a cada push em `dev`/`main` e pull request.
 
 Estrutura: `public/` contém a interface; `server.mjs` serve arquivos e faz proxy autenticado; `tests/` valida segurança e contrato HTTP. Nenhum segredo deve ser commitado; use `.env` ou variáveis do provedor.
+
+
+## Autenticação por contatos
+
+O comprador informa somente o celular e confirma o código do WhatsApp; a conta é
+criada no primeiro acesso confirmado. O backend mantém uma sessão por comprador.
+O acesso operacional aceita e-mail, celular ou username + senha e exibe o fluxo de
+confirmação de e-mail e celular quando necessário. Tokens continuam em cookies
+HttpOnly; a senha usada durante a confirmação fica somente na memória da página.
+O login não redireciona para Mercado Pago. A conexão para pagamentos permanece na
+página de integrações. Configure os provedores e migre o backend antes de usar o
+novo fluxo (docs/login-contatos.md no backend).
+
+## Busca pública
+
+A tela Buscar consulta comidas e restaurantes pelo mesmo campo e oferece filtros
+de entrega, retirada, períodos de refeição, bebidas e tipo de loja. A API usa FTS
+e GIN no PostgreSQL; o frontend envia filtros repetidos para `/api/v1/search`.

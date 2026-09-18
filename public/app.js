@@ -3,8 +3,9 @@ import { api, request, money, escapeHTML as h, positiveId, productImage } from '
 const $ = (selector, root = document) => root.querySelector(selector);
 const main = $('#content');
 const modal = $('#modal');
-const state = { stores: [], user: null, store: null, cart: null, products: [], page: 1, query: '', filter: '', busy: false, epoch: 0, tickets: [] };
+const state = { stores: [], user: null, store: null, cart: null, products: [], page: 1, query: '', filter: '', searchFilters: new Set(), busy: false, epoch: 0, tickets: [] };
 let poll, toastTimer;
+let pendingCredentials = null;
 const icons = { home: '⌂', store: '▦', bag: '▣', info: 'ⓘ', user: '●', kitchen: '▤' };
 const button = (text, action, extra = '', kind = 'primary') => `<button type="button" class="button ${kind}" data-action="${action}" ${extra}>${text}</button>`;
 const field = (label, name, type = 'text', value = '', attrs = '') => `<label>${label}<input name="${name}" type="${type}" value="${h(value)}" ${attrs}></label>`;
@@ -169,11 +170,12 @@ function storeInfo() {
     </section>`;
 }
 function login(partner = false) {
+  pendingCredentials = null;
   if (state.user && (partner ? operator() : true)) {
     if (partner) return partnerHome();
     return account();
   }
-  main.innerHTML = `<section class="auth-shell"><div class="auth-intro"><p class="eyebrow">${partner ? 'ÁREA DO ESTABELECIMENTO' : 'BEM-VINDO AO PEDE AÍ'}</p><h1>${partner ? 'Sua operação,<br>em um só lugar.' : 'Seu próximo pedido<br>começa por aqui.'}</h1><p>${partner ? 'Acesse o cardápio e a fila de preparo com sua conta de funcionário.' : 'Entre com o código enviado ao seu WhatsApp para montar sua sacola.'}</p><img src="/assets/food.jpg" alt="Hambúrguer e fritas"></div><div class="panel auth-panel"><h2>${partner ? 'Entrar como parceiro' : 'Entrar na minha conta'}</h2>${partner ? `<form data-form="employee">${field('E-mail', 'email', 'email', '', 'required autocomplete="username" maxlength="255"')}${field('Senha', 'password', 'password', '', 'required minlength="6" maxlength="255" autocomplete="current-password"')}<button class="button primary full">Entrar</button></form>` : `<form data-form="request-code">${field('WhatsApp com DDI e DDD', 'phone', 'tel', '', 'required autocomplete="tel" placeholder="55 83 99999-9999" minlength="8" maxlength="22"')}<button class="button primary full">Receber código</button></form><p class="auth-foot">Primeira vez aqui? <a href="#cadastro">Criar minha conta</a></p>`}<p class="form-error" role="alert" hidden></p><a class="muted-link" href="#${partner ? 'entrar' : 'parceiro'}">${partner ? 'Sou cliente' : 'Acesso do estabelecimento'}</a></div></section>`;
+  main.innerHTML = `<section class="auth-shell"><div class="auth-intro"><p class="eyebrow">${partner ? 'ÁREA DO ESTABELECIMENTO' : 'BEM-VINDO AO PEDE AÍ'}</p><h1>${partner ? 'Sua operação,<br>em um só lugar.' : 'Seu próximo pedido<br>começa por aqui.'}</h1><p>${partner ? 'Acesse o cardápio e a fila de preparo com sua conta de funcionário.' : 'Entre com o código enviado ao seu WhatsApp para montar sua sacola.'}</p><img src="/assets/food.jpg" alt="Hambúrguer e fritas"></div><div class="panel auth-panel"><h2>${partner ? 'Entrar como parceiro' : 'Entrar na minha conta'}</h2>${partner ? `<form data-form="employee">${field('E-mail, celular ou usuário', 'identifier', 'text', '', 'required autocomplete="username" maxlength="255"')}${field('Senha', 'password', 'password', '', 'required minlength="6" maxlength="255" autocomplete="current-password"')}<button class="button primary full">Entrar</button></form>` : `<form data-form="request-code">${field('WhatsApp com DDI e DDD', 'phone', 'tel', '', 'required autocomplete="tel" placeholder="55 83 99999-9999" minlength="8" maxlength="22"')}<button class="button primary full">Receber código</button></form><p class="auth-foot">Primeiro acesso? Sua conta é criada ao confirmar o número. Um novo login encerra a sessão anterior.</p>`}<p class="form-error" role="alert" hidden></p><a class="muted-link" href="#${partner ? 'entrar' : 'parceiro'}">${partner ? 'Sou cliente' : 'Acesso do estabelecimento'}</a></div></section>`;
 }
 function registration() {
   main.innerHTML = `<section class="narrow">${heading('PRIMEIRO PEDIDO?', 'Crie sua conta')}<div class="panel"><form data-form="register">${field('Seu nome', 'name', 'text', '', 'required minlength="2" maxlength="120" autocomplete="name"')}${field('WhatsApp com DDI e DDD', 'phone', 'tel', '', 'required autocomplete="tel" placeholder="55 83 99999-9999" minlength="8" maxlength="22"')}${field('CPF (opcional)', 'cpf', 'text', '', 'inputmode="numeric" maxlength="14"')}<button class="button primary full">Criar conta</button></form><p class="form-error" role="alert" hidden></p><p>Já tem conta? <a href="#entrar">Entrar</a></p></div></section>`;
@@ -182,12 +184,15 @@ function verification(phone) {
   main.innerHTML = `<section class="narrow">${heading('CONFIRME SEU NÚMERO', 'Confira seu WhatsApp')}<div class="panel"><p>Enviamos um código para <strong>${h(phone)}</strong>.</p><form data-form="verify" data-phone="${h(phone)}">${field('Código de 6 dígitos', 'code', 'text', '', 'required inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" autofocus')}<button class="button primary full">Confirmar e entrar</button></form><p class="form-error" role="alert" hidden></p><a href="#entrar">Usar outro número ou pedir novo código</a></div></section>`;
   $('[name="code"]').focus();
 }
+function contactVerification() {
+  main.innerHTML = `<section class="narrow">${heading('CONFIRME SEUS CONTATOS', 'Proteja sua conta')}<div class="panel"><p>Confirme o e-mail e o celular cadastrados antes do primeiro acesso.</p><section data-contact="email"><h3>E-mail</h3><form data-form="contact-send" data-channel="email"><button class="button primary">Enviar código por e-mail</button></form></section><section data-contact="phone"><h3>WhatsApp</h3><form data-form="contact-send" data-channel="phone">${field('Celular (preencha se sua conta ainda não tiver um)', 'phone_number', 'tel', '', 'autocomplete="tel" placeholder="55 83 99999-9999" maxlength="22"')}<button class="button primary">Enviar código pelo WhatsApp</button></form></section><form data-form="contacts-finish"><button class="button primary full">Concluir e entrar</button></form><p class="form-error" role="alert" hidden></p><a href="#parceiro">Voltar ao login</a></div></section>`;
+}
 async function account() {
   if (!state.user) return login();
   const epoch = state.epoch;
   const user = shopper() ? await api('/api/v1/users/me') : null;
   if (epoch !== state.epoch) return;
-  main.innerHTML = `<section class="narrow">${heading('MINHA CONTA', h(user?.name || state.user.name))}<div class="panel">${user ? `<form data-form="profile">${field('Nome', 'name', 'text', user.name, 'required minlength="2" maxlength="120"')}${field('CPF (opcional)', 'cpf', 'text', user.cpf || '', 'inputmode="numeric" maxlength="14"')}<label>WhatsApp<input value="${h(user.phone)}" disabled></label><button class="button primary">Salvar alterações</button></form><p class="form-error" role="alert" hidden></p>` : `<p>Conta do estabelecimento</p><a class="button primary" href="#parceiro">Abrir painel</a>`}<div class="account-actions">${button('Sair da conta', 'logout', '', 'ghost')}${user ? button('Excluir minha conta', 'delete-account', '', 'text-danger') : ''}</div></div>${user ? `<div class="section"><a class="store-card" href="#pedidos"><div><h3>Meus pedidos</h3><p>Disponibilidade do acompanhamento</p></div><span aria-hidden="true">→</span></a></div>` : ''}</section>`;
+  main.innerHTML = `<section class="narrow">${heading('MINHA CONTA', h(user?.name || state.user.name))}<div class="panel">${user ? `<form data-form="profile">${field('Nome', 'name', 'text', user.name, 'required minlength="2" maxlength="120"')}${field('CPF (opcional)', 'cpf', 'text', user.cpf || '', 'inputmode="numeric" maxlength="14"')}<label>WhatsApp<input value="${h(user.phone)}" disabled></label><button class="button primary">Salvar alterações</button></form><p class="form-error" role="alert" hidden></p>` : `<p>Conta operacional</p><a class="button primary" href="#parceiro">Abrir painel</a><details><summary>Definir nome de usuário</summary><form data-form="username">${field('E-mail ou celular atual', 'identifier', 'text', '', 'required autocomplete="username"')}${field('Senha atual', 'password', 'password', '', 'required autocomplete="current-password"')}${field('Novo usuário', 'username', 'text', '', 'required pattern="[a-zA-Z][a-zA-Z0-9_.-]{2,63}" minlength="3" maxlength="64"')}<button class="button primary">Salvar usuário</button></form><p class="form-error" role="alert" hidden></p></details>`}<div class="account-actions">${button('Sair da conta', 'logout', '', 'ghost')}${user ? button('Excluir minha conta', 'delete-account', '', 'text-danger') : ''}</div></div>${user ? `<div class="section"><a class="store-card" href="#pedidos"><div><h3>Meus pedidos</h3><p>Disponibilidade do acompanhamento</p></div><span aria-hidden="true">→</span></a></div>` : ''}</section>`;
 }
 async function catalog() {
   if (!state.store) {
@@ -260,6 +265,41 @@ async function catalog() {
       <footer class="p1-catalog-footer"><strong>pede aí.</strong><span>Cardápio digital</span></footer>
     </section>`;
 }
+const discoveryFilters = [
+  ['entrega', 'Entrega'],
+  ['retirar_no_balcao', 'Retirar no balcão'],
+  ['entrega_em_casa', 'Entrega em casa'],
+  ['lanches', 'Lanches'],
+  ['almocos', 'Almoços'],
+  ['jantas', 'Jantas'],
+  ['cafe_da_manha', 'Café da manhã'],
+  ['bebidas', 'Bebidas'],
+  ['loja', 'Loja'],
+  ['loja_fisica', 'Loja física'],
+];
+function discoveryToolbar() {
+  return `<section class="catalog-toolbar"><form data-form="search" class="search-row">${field('Buscar comida ou restaurante', 'query', 'search', state.query, 'maxlength="120" placeholder="Ex.: hambúrguer ou Restaurante Central"')}<button class="button primary">Buscar</button></form><div class="chips" aria-label="Filtros da busca">${discoveryFilters.map(([value, label]) => `<button class="chip" data-action="search-filter" data-filter="${value}" aria-pressed="${state.searchFilters.has(value)}">${label}</button>`).join('')}</div></section>`;
+}
+async function discovery() {
+  const toolbar = discoveryToolbar();
+  if (!state.query && !state.searchFilters.size) {
+    main.innerHTML = `${heading('ENCONTRE O QUE DESEJA', 'Comida e restaurantes')}${toolbar}${empty('Comece sua busca', 'Digite o nome de uma comida ou restaurante, ou selecione um filtro.')}`;
+    return;
+  }
+  const query = new URLSearchParams({ page: state.page, page_size: 12 });
+  if (state.query) query.set('q', state.query);
+  for (const filter of state.searchFilters) query.append('filters', filter);
+  const epoch = state.epoch;
+  const data = await api(`/api/v1/search?${query}`);
+  if (epoch !== state.epoch) return;
+  state.products = data.products;
+  const stores = data.stores.length ? `<section class="section"><div class="section-heading"><h2>Restaurantes</h2><span>${data.store_total}</span></div><div class="store-grid">${data.stores.map(store => `<a class="store-card" href="#loja/${store.id_store}"><span class="store-initial">${h(store.name.slice(0, 1))}</span><div><h3>${h(store.name)}</h3><p>${[store.supports_delivery ? 'Entrega' : '', store.supports_pickup ? 'Retirada' : '', store.is_physical_store ? 'Loja física' : ''].filter(Boolean).join(' · ')}</p></div><span aria-hidden="true">→</span></a>`).join('')}</div></section>` : '';
+  const products = data.products.length ? `<section class="section"><div class="section-heading"><h2>Comidas</h2><span>${data.product_total}</span></div><div class="product-grid">${data.products.map(product => `<article class="product-card">${photo(product)}<div class="product-body"><div class="product-tags">${product.is_featured ? '<span class="tag">Destaque</span>' : ''}<span class="tag neutral">${h(product.store_name)}</span></div><h3>${h(product.name)}</h3><p>${h(product.description || 'Disponível no cardápio do estabelecimento.')}</p><div class="product-bottom"><strong>${money(product.base_price)}</strong>${button('+', 'search-product', `data-id="${product.id_product}" data-store="${product.id_store}" aria-label="Ver ${h(product.name)}"`, 'add')}</div></div></article>`).join('')}</div></section>` : '';
+  const noResults = !data.stores.length && !data.products.length ? empty('Nenhum resultado encontrado', 'Tente outro nome ou remova alguns filtros.', button('Limpar busca', 'reset-discovery', '', 'ghost')) : '';
+  const totalPages = Math.ceil(Math.max(data.store_total, data.product_total) / data.page_size);
+  const pagination = totalPages > 1 ? `<nav class="pagination" aria-label="Páginas dos resultados">${button('← Anterior', 'page', `data-page="${state.page - 1}" ${state.page <= 1 ? 'disabled' : ''}`, 'ghost')}<span>Página ${state.page} de ${totalPages}</span>${button('Próxima →', 'page', `data-page="${state.page + 1}" ${state.page >= totalPages ? 'disabled' : ''}`, 'ghost')}</nav>` : '';
+  main.innerHTML = `${heading('RESULTADOS DA BUSCA', state.query ? `Resultados para “${h(state.query)}”` : 'Comida e restaurantes')}${toolbar}${stores}${products}${noResults}${pagination}`;
+}
 function productModal(id) {
   const p = state.products.find(p => p.id_product === id); if (!p) return;
   modalOpen(`${photo(p, 'detail-image')}<p class="eyebrow">${h(storeName())}</p><h2 id="modal-title">${h(p.name)}</h2><p>${h(p.description || '')}</p><strong class="price">${money(p.base_price)}</strong>${p.is_active && p.is_available ? `<form data-form="add-item" data-id="${id}">${field('Quantidade', 'quantity', 'number', 1, 'required min="1" max="100" step="1"')}<label>Alguma observação?<textarea name="observation" maxlength="1000" placeholder="Ex.: sem cebola"></textarea></label><button class="button primary full">${shopper() ? 'Adicionar à sacola' : 'Entrar para adicionar'}</button></form>` : note('Este produto está indisponível no momento.')}`);
@@ -320,14 +360,14 @@ async function productsView() {
 function productEditor(id) {
   if (!productCategories.length) { categoryEditor(); return; }
   const p = state.products.find(p => p.id_product === id) || {};
-  modalOpen(`<h2 id="modal-title">${id ? 'Editar produto' : 'Novo produto'}</h2><form data-form="product-save" data-id="${id || ''}">${field('Nome', 'name', 'text', p.name || '', 'required minlength="2" maxlength="120"')}<div class="form-grid">${field('Preço (R$)', 'base_price', 'number', p.base_price ?? '', 'required min="0" max="99999999.99" step="0.01"')}<label>Categoria<select name="id_category" required><option value="">Selecione uma categoria</option>${productCategories.map(c => `<option value="${c.id_category}" ${c.id_category === p.id_category ? 'selected' : ''}>${h(c.name)}</option>`).join('')}</select></label></div><label>Descrição<textarea name="description" maxlength="5000">${h(p.description || '')}</textarea></label><div class="form-grid">${field('Preparo em minutos (opcional)', 'preparation_time_minutes', 'number', p.preparation_time_minutes ?? '', 'min="0" step="1"')}${field('SKU (opcional)', 'sku', 'text', p.sku || '', 'maxlength="80"')}</div><input type="hidden" name="image_url" value="${h(p.image_url || '/uploads/products/default.svg')}"><label>Foto do produto<input type="file" name="photo" accept="image/jpeg,image/png,image/webp,image/avif"></label><p class="small-copy">JPG, PNG, WebP ou AVIF, até 5 MB. A foto será enviada ao salvar.</p>${p.image_url ? `<img src="${h(productImage(p.image_url))}" alt="Foto atual" width="120" height="120">` : ''}<label class="check"><input type="checkbox" name="remove_photo">Usar imagem padrão</label><div class="checks">${[['is_active', 'Ativo', true], ['is_available', 'Disponível', true], ['is_featured', 'Destaque', false], ['is_sweet', 'Doce', false], ['is_savory', 'Salgado', false], ['is_solid', 'Sólido', false], ['is_snack', 'Lanche', false], ['is_beverage', 'Bebida', false], ['is_stew', 'Ensopado', false]].map(([name, label, fallback]) => `<label class="check"><input type="checkbox" name="${name}" ${(p[name] ?? fallback) ? 'checked' : ''}>${label}</label>`).join('')}</div>${field('Ordem no cardápio', 'sort_order', 'number', p.sort_order || 0, 'required min="0" step="1"')}<button class="button primary full">Salvar produto</button></form>`);
+  modalOpen(`<h2 id="modal-title">${id ? 'Editar produto' : 'Novo produto'}</h2><form data-form="product-save" data-id="${id || ''}">${field('Nome', 'name', 'text', p.name || '', 'required minlength="2" maxlength="120"')}<div class="form-grid">${field('Preço (R$)', 'base_price', 'number', p.base_price ?? '', 'required min="0" max="99999999.99" step="0.01"')}<label>Categoria<select name="id_category" required><option value="">Selecione uma categoria</option>${productCategories.map(c => `<option value="${c.id_category}" ${c.id_category === p.id_category ? 'selected' : ''}>${h(c.name)}</option>`).join('')}</select></label></div><label>Descrição<textarea name="description" maxlength="5000">${h(p.description || '')}</textarea></label><div class="form-grid">${field('Preparo em minutos (opcional)', 'preparation_time_minutes', 'number', p.preparation_time_minutes ?? '', 'min="0" step="1"')}${field('SKU (opcional)', 'sku', 'text', p.sku || '', 'maxlength="80"')}</div><input type="hidden" name="image_url" value="${h(p.image_url || '/uploads/products/default.svg')}"><label>Foto do produto<input type="file" name="photo" accept="image/jpeg,image/png,image/webp,image/avif"></label><p class="small-copy">JPG, PNG, WebP ou AVIF, até 5 MB. A foto será enviada ao salvar.</p>${p.image_url ? `<img src="${h(productImage(p.image_url))}" alt="Foto atual" width="120" height="120">` : ''}<label class="check"><input type="checkbox" name="remove_photo">Usar imagem padrão</label><div class="checks">${[['is_active', 'Ativo', true], ['is_available', 'Disponível', true], ['is_featured', 'Destaque', false], ['is_sweet', 'Doce', false], ['is_savory', 'Salgado', false], ['is_solid', 'Sólido', false], ['is_snack', 'Lanche', false], ['is_beverage', 'Bebida', false], ['is_stew', 'Ensopado', false], ['is_breakfast', 'Café da manhã', false], ['is_lunch', 'Almoço', false], ['is_dinner', 'Janta', false]].map(([name, label, fallback]) => `<label class="check"><input type="checkbox" name="${name}" ${(p[name] ?? fallback) ? 'checked' : ''}>${label}</label>`).join('')}</div>${field('Ordem no cardápio', 'sort_order', 'number', p.sort_order || 0, 'required min="0" step="1"')}<button class="button primary full">Salvar produto</button></form>`);
 }
 function categoryEditor() {
   modalOpen(`<h2 id="modal-title">Nova categoria</h2><form data-form="category-save">${field('Nome da categoria', 'name', 'text', '', 'required minlength="2" maxlength="120"')}<button class="button primary full">Salvar categoria</button></form>`);
 }
 function ticketsHTML(tickets) {
-  if (!tickets.length) return empty('Tudo em dia por aqui', 'Os pedidos confirmados aparecerão nesta fila.');
-  return `<div class="ticket-grid">${tickets.map(t => `<article class="ticket ${t.urgency.toLowerCase()}"><header><div><small>Pedido</small><h2>#${t.order_number}</h2></div><span class="status ${t.status === 'READY' ? 'green' : 'neutral'}">${({ CONFIRMED: 'Na fila', PREPARING: 'Em preparo', READY: 'Pronto' })[t.status] || h(t.status)}</span></header><div class="ticket-meta"><strong>${h(t.customer_name)}</strong><span>${({ DELIVERY: 'Entrega', PICKUP: 'Retirada', DINE_IN: 'No local' })[t.order_type] || h(t.order_type)} · ${t.elapsed_minutes} min</span></div>${t.items.map(i => `<div class="ticket-item"><strong>${i.quantity}× ${h(i.product_name)}</strong>${i.options.map(o => `<p>+ ${o.quantity}× ${h(o.option_name)}</p>`).join('')}${i.observation ? `<p class="observation">${h(i.observation)}</p>` : ''}</div>`).join('')}${t.customer_observation ? note(h(t.customer_observation)) : ''}<footer>${t.status === 'CONFIRMED' ? button('Iniciar preparo', 'ticket-claim', `data-id="${t.id_order}"`, 'primary full') : t.status === 'PREPARING' ? button('Marcar como pronto', 'ticket-ready', `data-id="${t.id_order}"`, 'primary full') : '<span class="ready-label">Pronto para saída</span>'}${button('Imprimir ticket', 'print-ticket', `data-id="${t.id_order}"`, 'ghost full small')}</footer></article>`).join('')}</div>`;
+  if (!tickets.length) return empty('Tudo em dia por aqui', 'Os pedidos recebidos aparecerão nesta fila.');
+  return `<div class="ticket-grid">${tickets.map(t => `<article class="ticket ${t.urgency.toLowerCase()}"><header><div><small>Pedido</small><h2>#${t.order_number}</h2></div><span class="status ${t.status === 'READY' ? 'green' : 'neutral'}">${({ PENDING: 'Recebido', CONFIRMED: 'Recebido', PREPARING: 'Em preparo', READY: 'Pronto' })[t.status] || h(t.status)}</span></header><div class="ticket-meta"><strong>${h(t.customer_name)}</strong><span>${({ DELIVERY: 'Entrega', PICKUP: 'Retirada', DINE_IN: 'No local' })[t.order_type] || h(t.order_type)} · ${t.elapsed_minutes} min</span></div>${t.items.map(i => `<div class="ticket-item"><strong>${i.quantity}× ${h(i.product_name)}</strong>${i.options.map(o => `<p>+ ${o.quantity}× ${h(o.option_name)}</p>`).join('')}${i.observation ? `<p class="observation">${h(i.observation)}</p>` : ''}</div>`).join('')}${t.customer_observation ? note(h(t.customer_observation)) : ''}<footer>${['PENDING', 'CONFIRMED'].includes(t.status) ? button('Iniciar preparo', 'ticket-claim', `data-id="${t.id_order}"`, 'primary full') : t.status === 'PREPARING' ? button('Marcar como pronto', 'ticket-ready', `data-id="${t.id_order}"`, 'primary full') : '<span class="ready-label">Pronto para saída</span>'}${button('Imprimir ticket', 'print-ticket', `data-id="${t.id_order}"`, 'ghost full small')}</footer></article>`).join('')}</div>`;
 }
 async function kitchenView() {
   if (!operator()) return login(true);
@@ -356,10 +396,12 @@ async function render() {
   const epoch = state.epoch;
   document.title = `Pede Aí • ${({ loja: 'Loja', buscar: 'Loja', sacola: 'Carrinho', checkout: 'Carrinho', info: 'Info', entrar: 'Entrar', conta: 'Conta', cozinha: 'Cozinha', produtos: 'Produtos', parceiro: 'Lojista', cadastro: 'Cadastro', pedidos: 'Pedidos', pedido: 'Pedido' })[page] || 'Início'}`;
   try {
+    if (page !== 'parceiro') pendingCredentials = null;
     if (page === 'inicio' || !page) home();
-    else if (page === 'buscar' || page === 'loja') await catalog();
+    else if (page === 'buscar') await discovery();
+    else if (page === 'loja') await catalog();
     else if (page === 'entrar') await login();
-    else if (page === 'cadastro') registration();
+    else if (page === 'cadastro') login();
     else if (page === 'info') storeInfo();
     else if (page === 'conta') await account();
     else if (page === 'sacola' || page === 'checkout') await cartView();
@@ -401,6 +443,7 @@ document.addEventListener('click', event => {
   if (name === 'close') { modal.close(); return; }
   if (name === 'new-category') { categoryEditor(); return; }
   if (name === 'product') { productModal(id); return; }
+  if (name === 'search-product') { state.store = positiveId(el.dataset.store); productModal(id); return; }
   if (name === 'new-product' || name === 'edit-product') { productEditor(id); return; }
   if (name === 'delete-product') { confirmDialog('Excluir produto?', 'O produto será removido do cardápio.', 'confirm-delete-product', `data-id="${id}"`); return; }
   if (name === 'clear-cart') { confirmDialog('Limpar sua sacola?', 'Todos os itens desta sacola serão removidos.', 'confirm-clear-cart'); return; }
@@ -416,9 +459,15 @@ document.addEventListener('click', event => {
       if (url.origin !== 'https://auth.mercadopago.com' || url.pathname !== '/authorization') throw new Error('Endereço de autorização inválido.');
       location.assign(url.href);
     } else if (name === 'refresh') await render();
+    else if (name === 'search-filter') {
+      const value = el.dataset.filter;
+      if (state.searchFilters.has(value)) state.searchFilters.delete(value); else state.searchFilters.add(value);
+      state.page = 1; await render();
+    }
     else if (name === 'filter') { state.filter = el.dataset.filter; state.page = 1; await render(); }
     else if (name === 'page') { state.page = positiveId(el.dataset.page) || 1; await render(); }
     else if (name === 'reset-search') { state.page = 1; state.query = ''; state.filter = ''; await render(); }
+    else if (name === 'reset-discovery') { state.page = 1; state.query = ''; state.searchFilters.clear(); await render(); }
     else if (name === 'change-store') { state.store = null; await render(); }
     else if (name === 'logout') {
       try { await request('/session/logout', { method: 'POST', data: {} }); } finally { state.user = null; state.cart = null; nav(); go('entrar'); }
@@ -472,10 +521,38 @@ document.addEventListener('submit', event => {
       const phone = values.phone.replace(/\D/g, '');
       await api('/auth/user/generate-code', { method: 'POST', data: { phone_number: phone } }); verification(phone);
     } else if (name === 'verify' || name === 'employee') {
-      const response = await api(name === 'verify' ? '/auth/user/verify-code' : '/auth/user/login', { method: 'POST', data: name === 'verify' ? { phone_number: form.dataset.phone, code: values.code } : values });
+      let response;
+      try {
+        response = await api(name === 'verify' ? '/auth/user/verify-code' : '/auth/user/login', { method: 'POST', data: name === 'verify' ? { phone_number: form.dataset.phone, code: values.code } : values });
+      } catch (error) {
+        if (name === 'employee' && error.code === 'contact_verification_required') {
+          pendingCredentials = { identifier: values.identifier, password: values.password };
+          contactVerification(); return;
+        }
+        throw error;
+      }
+      pendingCredentials = null;
       state.user = response.user; state.cart = null; nav();
-      if (name === 'employee') { const connection = await api('/api/v1/stores/me/mercado-pago'); go(connection.connected ? 'parceiro' : 'integracoes'); return; }
-      go(name === 'employee' ? 'parceiro' : state.store ? `loja/${state.store}` : 'inicio');
+      go(name === 'employee' ? (operator() ? 'parceiro' : 'conta') : state.store ? `loja/${state.store}` : 'inicio');
+    } else if (name === 'contact-send' || name === 'contact-confirm') {
+      if (!pendingCredentials) { go('parceiro'); return; }
+      const channel = form.dataset.channel;
+      const phone_number = values.phone_number || form.dataset.phone || undefined;
+      const data = { ...pendingCredentials, channel, ...(phone_number ? { phone_number } : {}), ...(name === 'contact-confirm' ? { code: values.code } : {}) };
+      await api(`/auth/credentials/${name === 'contact-send' ? 'request-code' : 'verify-code'}`, { method: 'POST', data });
+      if (name === 'contact-send') {
+        const container = form.closest('[data-contact]');
+        container.innerHTML = `<h3>${channel === 'email' ? 'E-mail' : 'WhatsApp'}</h3><p>Código enviado ao contato da sua conta. Válido por 5 minutos.</p><form data-form="contact-confirm" data-channel="${channel}" data-phone="${h(phone_number || '')}">${field('Código de 6 dígitos', 'code', 'text', '', 'required inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code"')}<button class="button primary">Confirmar</button></form>`;
+      } else {
+        form.closest('[data-contact]').innerHTML = `<p role="status">${channel === 'email' ? 'E-mail' : 'Celular'} confirmado ✓</p>`;
+      }
+    } else if (name === 'contacts-finish') {
+      if (!pendingCredentials) { go('parceiro'); return; }
+      const response = await api('/auth/user/login', { method: 'POST', data: pendingCredentials });
+      pendingCredentials = null; state.user = response.user; state.cart = null; nav(); go(operator() ? 'parceiro' : 'conta');
+    } else if (name === 'username') {
+      await api('/auth/credentials/username', { method: 'POST', data: values });
+      form.reset(); toast('Nome de usuário atualizado.');
     } else if (name === 'register') {
       await api('/api/v1/users', { method: 'POST', data: { name: values.name.trim(), phone: values.phone.replace(/\D/g, ''), cpf: values.cpf.replace(/\D/g, '') || null } });
       go('entrar'); toast('Conta criada. Peça seu código para entrar.');
@@ -497,7 +574,7 @@ document.addEventListener('submit', event => {
       const data = { ...values, base_price: values.base_price, id_category: Number(values.id_category), sort_order: Number(values.sort_order), preparation_time_minutes: values.preparation_time_minutes === '' ? null : Number(values.preparation_time_minutes), sku: values.sku.trim() || null, description: values.description.trim() || null };
       delete data.photo; delete data.remove_photo;
       if (values.remove_photo === 'on') data.image_url = '/uploads/products/default.svg';
-      for (const key of ['is_active', 'is_available', 'is_featured', 'is_sweet', 'is_savory', 'is_solid', 'is_snack', 'is_beverage', 'is_stew']) data[key] = values[key] === 'on';
+      for (const key of ['is_active', 'is_available', 'is_featured', 'is_sweet', 'is_savory', 'is_solid', 'is_snack', 'is_beverage', 'is_stew', 'is_breakfast', 'is_lunch', 'is_dinner']) data[key] = values[key] === 'on';
       const id = positiveId(form.dataset.id);
       const saved = await api(`/api/v1/products${id ? `/${id}` : ''}`, { method: id ? 'PUT' : 'POST', data });
       form.dataset.id = saved.id_product;
@@ -522,3 +599,4 @@ async function boot() {
   if (session.status === 'rejected' && session.reason.status !== 401) toast('Não foi possível restaurar sua sessão. Tente novamente.');
 }
 boot();
+

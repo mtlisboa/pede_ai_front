@@ -80,7 +80,7 @@ function decorate() {
   setRouteClass();
   decorateNavigation();
   decorateHeader();
-  decorateMerchantLogin();
+  // Legacy landing and Mercado Pago login decorators are retained but disabled.
   decorateMercadoPago();
 }
 

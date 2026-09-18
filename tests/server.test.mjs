@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
+import { readFile } from 'node:fs/promises';
 import { createApp } from '../server.mjs';
 
 const token = (suffix = 'old') => `header.${Buffer.from(JSON.stringify({ sub: '7', name: 'Cliente', role: 'SHOPPER' })).toString('base64url')}.${suffix}`;
@@ -46,6 +47,14 @@ test('login keeps tokens out of JavaScript and uses HttpOnly session cookies', a
   const cookies = r.headers.getSetCookie(); assert.equal(cookies.length, 2);
   for (const c of cookies) { assert.match(c, /HttpOnly/); assert.match(c, /SameSite=Strict/); }
   assert.equal(f.seen[0].url, '/auth/user/verify-code');
+});
+
+test('forwards public food and restaurant search with repeated filters', async t => {
+  const f = await fixture(t, entry => ({ data: { url: entry.url } }));
+  const r = await f.send('/backend/api/v1/search?q=burger&filters=entrega&filters=lanches');
+  assert.equal(r.status, 200);
+  assert.equal((await r.json()).url, '/api/v1/search?q=burger&filters=entrega&filters=lanches');
+  assert.equal(f.seen[0].auth, undefined);
 });
 
 test('rejects cross-origin writes and paths outside the API allowlist', async t => {
@@ -100,6 +109,29 @@ test('forwards real kitchen transitions and preserves errors', async t => {
   assert.equal((await claim.json()).status, 'PREPARING');
   const ready = await f.send('/backend/api/v1/kitchen/tickets/12/ready', 'POST', {});
   assert.equal(ready.status, 409);
+});
+
+test('orders UI contains six-column kanban, history and optional cancellation reason', async () => {
+  const [orders, theme] = await Promise.all([
+    readFile(new URL('../public/orders.js', import.meta.url), 'utf8'),
+    readFile(new URL('../public/theme.css', import.meta.url), 'utf8'),
+  ]);
+  for (const column of ['received', 'preparing', 'ready', 'out_for_delivery', 'delivered', 'cancelled']) {
+    assert.match(orders, new RegExp(`\\['${column}'`));
+  }
+  assert.match(orders, /\/api\/v1\/orders\/kanban/);
+  assert.match(orders, /Histórico do pedido/);
+  assert.match(orders, /Descrição do cancelamento \(opcional\)/);
+  assert.match(theme, /\.order-kanban/);
+});
+
+test('forwards the authenticated order kanban endpoint', async t => {
+  const f = await fixture(t, entry => ({ data: { url: entry.url } }));
+  const cookie = `pede_access=${token('operator')}`;
+  const response = await f.send('/backend/api/v1/orders/kanban', 'GET', undefined, cookie);
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).url, '/api/v1/orders/kanban');
+  assert.equal(f.seen[0].auth, `Bearer ${token('operator')}`);
 });
 
 test('does not turn HTML upstream errors into successful API responses', async t => {
@@ -157,4 +189,25 @@ test('merchant OAuth binds callbacks to an HttpOnly browser nonce and keeps sess
   assert.equal(page.headers.get('referrer-policy'), 'no-referrer');
   assert.doesNotMatch(await page.text(), /private-code/);
   assert.equal((await f.send('/oauth-callback.js')).status, 200);
+});
+
+
+test('password identifiers and contact verification pass through without creating premature sessions', async t => {
+  const f = await fixture(t, entry => entry.url === '/auth/user/login'
+    ? { status: 403, data: { detail: { error: 'contact_verification_required', message: 'Confirme seus contatos' } } }
+    : { status: 202, data: { is_valid: true, message: 'Código enviado' } });
+  const login = await f.send('/backend/auth/user/login', 'POST', { identifier: 'owner.test', password: 'example-password' });
+  assert.equal(login.status, 403);
+  assert.equal((await login.json()).detail.error, 'contact_verification_required');
+  assert.equal(login.headers.get('set-cookie'), null);
+  for (const channel of ['email', 'phone']) {
+    const data = { identifier: 'owner.test', password: 'example-password', channel };
+    const sent = await f.send('/backend/auth/credentials/request-code', 'POST', data);
+    assert.equal(sent.status, 202);
+    assert.deepEqual(JSON.parse(f.seen.at(-1).body), data);
+    assert.equal(sent.headers.get('set-cookie'), null);
+    const verified = await f.send('/backend/auth/credentials/verify-code', 'POST', { ...data, code: '123456' });
+    assert.equal(verified.status, 202);
+  }
+  assert.equal((await f.send('/backend/auth/merchant/mercado-pago/authorize', 'POST', {})).status, 404);
 });

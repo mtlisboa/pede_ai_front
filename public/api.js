@@ -1,5 +1,5 @@
 export class ApiError extends Error {
-  constructor(message, status) { super(message); this.status = status; }
+  constructor(message, status, code) { super(message); this.status = status; this.code = code; }
 }
 export function errorText(data) {
   const detail = data?.detail ?? data?.message;
@@ -22,7 +22,7 @@ export async function request(path, { method = 'GET', data, signal } = {}) {
   if (response.status === 204) return null;
   let result;
   try { result = await response.json(); } catch { throw new ApiError('O serviço retornou uma resposta inesperada.', response.status); }
-  if (!response.ok) throw new ApiError(errorText(result), response.status);
+  if (!response.ok) throw new ApiError(errorText(result), response.status, result?.detail?.error);
   return result;
 }
 export const api = (path, options) => request('/backend' + path, options);
@@ -33,3 +33,4 @@ export function productImage(path) {
   if (typeof path !== 'string' || !/^\/uploads\/products\/[a-zA-Z0-9_.-]+\.(jpg|jpeg|png|webp|avif|svg)$/i.test(path)) return '';
   return path.replace('/uploads/', '/media/');
 }
+
