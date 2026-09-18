@@ -18,6 +18,7 @@ const ROUTES = [
   [/^\/api\/v1\/users\/me$/, ['GET', 'PUT', 'PATCH', 'DELETE']],
   [/^\/api\/v1\/products$/, ['GET', 'POST']],
   [/^\/api\/v1\/products\/\d+$/, ['GET', 'PUT', 'PATCH', 'DELETE']],
+  [/^\/api\/v1\/search$/, ['GET']],
   [/^\/api\/v1\/carts$/, ['POST']],
   [/^\/api\/v1\/carts\/current$/, ['GET', 'DELETE']],
   [/^\/api\/v1\/carts\/current\/items$/, ['POST']],
@@ -220,4 +221,3 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   server.listen(Number(process.env.PORT || 8080), process.env.HOST || '0.0.0.0', () => console.log(`Pede Aí disponível na porta ${process.env.PORT || 8080}`));
   for (const signal of ['SIGTERM', 'SIGINT']) process.on(signal, () => server.close(() => process.exit(0)));
 }
-

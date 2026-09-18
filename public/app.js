@@ -3,7 +3,7 @@ import { api, request, money, escapeHTML as h, positiveId, productImage } from '
 const $ = (selector, root = document) => root.querySelector(selector);
 const main = $('#content');
 const modal = $('#modal');
-const state = { stores: [], user: null, store: null, cart: null, products: [], page: 1, query: '', filter: '', busy: false, epoch: 0, tickets: [] };
+const state = { stores: [], user: null, store: null, cart: null, products: [], page: 1, query: '', filter: '', searchFilters: new Set(), busy: false, epoch: 0, tickets: [] };
 let poll, toastTimer;
 let pendingCredentials = null;
 const icons = { home: '⌂', search: '⌕', bag: '▢', user: '○', kitchen: '▤' };
@@ -85,6 +85,41 @@ async function catalog() {
   state.products = data.items;
   main.innerHTML = `${heading('CARDÁPIO', h(storeName()), `<a class="button ghost" href="#sacola/${state.store}">Ver sacola →</a>`)}<section class="catalog-toolbar"><form data-form="search" class="search-row">${field('Buscar no cardápio', 'query', 'search', state.query, 'maxlength="120" placeholder="Qual é a sua vontade?"')}<button class="button primary">Buscar</button></form><div class="chips" aria-label="Filtros de produtos">${[['', 'Todos'], ['is_featured', 'Destaques'], ['is_available', 'Disponíveis']].map(([filter, title]) => `<button class="chip" data-action="filter" data-filter="${filter}" aria-pressed="${state.filter === filter}">${title}</button>`).join('')}</div></section><div class="section-heading"><h2>Escolha seus favoritos</h2><span>${data.total} ${data.total === 1 ? 'opção' : 'opções'}</span></div>${data.items.length ? `<div class="product-grid">${data.items.map(p => `<article class="product-card">${photo(p)}<div class="product-body"><div class="product-tags">${p.is_featured ? '<span class="tag">Destaque</span>' : ''}${(!p.is_active || !p.is_available) ? '<span class="tag neutral">Indisponível</span>' : ''}</div><h3>${h(p.name)}</h3><p>${h(p.description || 'Veja os detalhes e personalize sua escolha.')}</p><div class="product-bottom"><div><strong>${money(p.base_price)}</strong>${p.preparation_time_minutes != null ? `<small>Preparo: ${p.preparation_time_minutes} min</small>` : ''}</div>${button('+', 'product', `data-id="${p.id_product}" aria-label="Ver ${h(p.name)}"`, 'add')}</div></div></article>`).join('')}</div><nav class="pagination" aria-label="Páginas do cardápio">${button('← Anterior', 'page', `data-page="${state.page - 1}" ${state.page <= 1 ? 'disabled' : ''}`, 'ghost')}<span>Página ${state.page} de ${Math.ceil(data.total / data.page_size)}</span>${button('Próxima →', 'page', `data-page="${state.page + 1}" ${state.page * data.page_size >= data.total ? 'disabled' : ''}`, 'ghost')}</nav>` : empty('Nenhum produto encontrado', 'Tente outra busca ou volte mais tarde para conferir o cardápio.', button('Limpar filtros', 'reset-search', '', 'ghost'))}`;
 }
+const discoveryFilters = [
+  ['entrega', 'Entrega'],
+  ['retirar_no_balcao', 'Retirar no balcão'],
+  ['entrega_em_casa', 'Entrega em casa'],
+  ['lanches', 'Lanches'],
+  ['almocos', 'Almoços'],
+  ['jantas', 'Jantas'],
+  ['cafe_da_manha', 'Café da manhã'],
+  ['bebidas', 'Bebidas'],
+  ['loja', 'Loja'],
+  ['loja_fisica', 'Loja física'],
+];
+function discoveryToolbar() {
+  return `<section class="catalog-toolbar"><form data-form="search" class="search-row">${field('Buscar comida ou restaurante', 'query', 'search', state.query, 'maxlength="120" placeholder="Ex.: hambúrguer ou Restaurante Central"')}<button class="button primary">Buscar</button></form><div class="chips" aria-label="Filtros da busca">${discoveryFilters.map(([value, label]) => `<button class="chip" data-action="search-filter" data-filter="${value}" aria-pressed="${state.searchFilters.has(value)}">${label}</button>`).join('')}</div></section>`;
+}
+async function discovery() {
+  const toolbar = discoveryToolbar();
+  if (!state.query && !state.searchFilters.size) {
+    main.innerHTML = `${heading('ENCONTRE O QUE DESEJA', 'Comida e restaurantes')}${toolbar}${empty('Comece sua busca', 'Digite o nome de uma comida ou restaurante, ou selecione um filtro.')}`;
+    return;
+  }
+  const query = new URLSearchParams({ page: state.page, page_size: 12 });
+  if (state.query) query.set('q', state.query);
+  for (const filter of state.searchFilters) query.append('filters', filter);
+  const epoch = state.epoch;
+  const data = await api(`/api/v1/search?${query}`);
+  if (epoch !== state.epoch) return;
+  state.products = data.products;
+  const stores = data.stores.length ? `<section class="section"><div class="section-heading"><h2>Restaurantes</h2><span>${data.store_total}</span></div><div class="store-grid">${data.stores.map(store => `<a class="store-card" href="#loja/${store.id_store}"><span class="store-initial">${h(store.name.slice(0, 1))}</span><div><h3>${h(store.name)}</h3><p>${[store.supports_delivery ? 'Entrega' : '', store.supports_pickup ? 'Retirada' : '', store.is_physical_store ? 'Loja física' : ''].filter(Boolean).join(' · ')}</p></div><span aria-hidden="true">→</span></a>`).join('')}</div></section>` : '';
+  const products = data.products.length ? `<section class="section"><div class="section-heading"><h2>Comidas</h2><span>${data.product_total}</span></div><div class="product-grid">${data.products.map(product => `<article class="product-card">${photo(product)}<div class="product-body"><div class="product-tags">${product.is_featured ? '<span class="tag">Destaque</span>' : ''}<span class="tag neutral">${h(product.store_name)}</span></div><h3>${h(product.name)}</h3><p>${h(product.description || 'Disponível no cardápio do estabelecimento.')}</p><div class="product-bottom"><strong>${money(product.base_price)}</strong>${button('+', 'search-product', `data-id="${product.id_product}" data-store="${product.id_store}" aria-label="Ver ${h(product.name)}"`, 'add')}</div></div></article>`).join('')}</div></section>` : '';
+  const noResults = !data.stores.length && !data.products.length ? empty('Nenhum resultado encontrado', 'Tente outro nome ou remova alguns filtros.', button('Limpar busca', 'reset-discovery', '', 'ghost')) : '';
+  const totalPages = Math.ceil(Math.max(data.store_total, data.product_total) / data.page_size);
+  const pagination = totalPages > 1 ? `<nav class="pagination" aria-label="Páginas dos resultados">${button('← Anterior', 'page', `data-page="${state.page - 1}" ${state.page <= 1 ? 'disabled' : ''}`, 'ghost')}<span>Página ${state.page} de ${totalPages}</span>${button('Próxima →', 'page', `data-page="${state.page + 1}" ${state.page >= totalPages ? 'disabled' : ''}`, 'ghost')}</nav>` : '';
+  main.innerHTML = `${heading('RESULTADOS DA BUSCA', state.query ? `Resultados para “${h(state.query)}”` : 'Comida e restaurantes')}${toolbar}${stores}${products}${noResults}${pagination}`;
+}
 function productModal(id) {
   const p = state.products.find(p => p.id_product === id); if (!p) return;
   modalOpen(`${photo(p, 'detail-image')}<p class="eyebrow">${h(storeName())}</p><h2 id="modal-title">${h(p.name)}</h2><p>${h(p.description || '')}</p><strong class="price">${money(p.base_price)}</strong>${p.is_active && p.is_available ? `<form data-form="add-item" data-id="${id}">${field('Quantidade', 'quantity', 'number', 1, 'required min="1" max="100" step="1"')}<label>Alguma observação?<textarea name="observation" maxlength="1000" placeholder="Ex.: sem cebola"></textarea></label><button class="button primary full">${shopper() ? 'Adicionar à sacola' : 'Entrar para adicionar'}</button></form>` : note('Este produto está indisponível no momento.')}`);
@@ -145,7 +180,7 @@ async function productsView() {
 function productEditor(id) {
   if (!productCategories.length) { categoryEditor(); return; }
   const p = state.products.find(p => p.id_product === id) || {};
-  modalOpen(`<h2 id="modal-title">${id ? 'Editar produto' : 'Novo produto'}</h2><form data-form="product-save" data-id="${id || ''}">${field('Nome', 'name', 'text', p.name || '', 'required minlength="2" maxlength="120"')}<div class="form-grid">${field('Preço (R$)', 'base_price', 'number', p.base_price ?? '', 'required min="0" max="99999999.99" step="0.01"')}<label>Categoria<select name="id_category" required><option value="">Selecione uma categoria</option>${productCategories.map(c => `<option value="${c.id_category}" ${c.id_category === p.id_category ? 'selected' : ''}>${h(c.name)}</option>`).join('')}</select></label></div><label>Descrição<textarea name="description" maxlength="5000">${h(p.description || '')}</textarea></label><div class="form-grid">${field('Preparo em minutos (opcional)', 'preparation_time_minutes', 'number', p.preparation_time_minutes ?? '', 'min="0" step="1"')}${field('SKU (opcional)', 'sku', 'text', p.sku || '', 'maxlength="80"')}</div><input type="hidden" name="image_url" value="${h(p.image_url || '/uploads/products/default.svg')}"><label>Foto do produto<input type="file" name="photo" accept="image/jpeg,image/png,image/webp,image/avif"></label><p class="small-copy">JPG, PNG, WebP ou AVIF, até 5 MB. A foto será enviada ao salvar.</p>${p.image_url ? `<img src="${h(productImage(p.image_url))}" alt="Foto atual" width="120" height="120">` : ''}<label class="check"><input type="checkbox" name="remove_photo">Usar imagem padrão</label><div class="checks">${[['is_active', 'Ativo', true], ['is_available', 'Disponível', true], ['is_featured', 'Destaque', false], ['is_sweet', 'Doce', false], ['is_savory', 'Salgado', false], ['is_solid', 'Sólido', false], ['is_snack', 'Lanche', false], ['is_beverage', 'Bebida', false], ['is_stew', 'Ensopado', false]].map(([name, label, fallback]) => `<label class="check"><input type="checkbox" name="${name}" ${(p[name] ?? fallback) ? 'checked' : ''}>${label}</label>`).join('')}</div>${field('Ordem no cardápio', 'sort_order', 'number', p.sort_order || 0, 'required min="0" step="1"')}<button class="button primary full">Salvar produto</button></form>`);
+  modalOpen(`<h2 id="modal-title">${id ? 'Editar produto' : 'Novo produto'}</h2><form data-form="product-save" data-id="${id || ''}">${field('Nome', 'name', 'text', p.name || '', 'required minlength="2" maxlength="120"')}<div class="form-grid">${field('Preço (R$)', 'base_price', 'number', p.base_price ?? '', 'required min="0" max="99999999.99" step="0.01"')}<label>Categoria<select name="id_category" required><option value="">Selecione uma categoria</option>${productCategories.map(c => `<option value="${c.id_category}" ${c.id_category === p.id_category ? 'selected' : ''}>${h(c.name)}</option>`).join('')}</select></label></div><label>Descrição<textarea name="description" maxlength="5000">${h(p.description || '')}</textarea></label><div class="form-grid">${field('Preparo em minutos (opcional)', 'preparation_time_minutes', 'number', p.preparation_time_minutes ?? '', 'min="0" step="1"')}${field('SKU (opcional)', 'sku', 'text', p.sku || '', 'maxlength="80"')}</div><input type="hidden" name="image_url" value="${h(p.image_url || '/uploads/products/default.svg')}"><label>Foto do produto<input type="file" name="photo" accept="image/jpeg,image/png,image/webp,image/avif"></label><p class="small-copy">JPG, PNG, WebP ou AVIF, até 5 MB. A foto será enviada ao salvar.</p>${p.image_url ? `<img src="${h(productImage(p.image_url))}" alt="Foto atual" width="120" height="120">` : ''}<label class="check"><input type="checkbox" name="remove_photo">Usar imagem padrão</label><div class="checks">${[['is_active', 'Ativo', true], ['is_available', 'Disponível', true], ['is_featured', 'Destaque', false], ['is_sweet', 'Doce', false], ['is_savory', 'Salgado', false], ['is_solid', 'Sólido', false], ['is_snack', 'Lanche', false], ['is_beverage', 'Bebida', false], ['is_stew', 'Ensopado', false], ['is_breakfast', 'Café da manhã', false], ['is_lunch', 'Almoço', false], ['is_dinner', 'Janta', false]].map(([name, label, fallback]) => `<label class="check"><input type="checkbox" name="${name}" ${(p[name] ?? fallback) ? 'checked' : ''}>${label}</label>`).join('')}</div>${field('Ordem no cardápio', 'sort_order', 'number', p.sort_order || 0, 'required min="0" step="1"')}<button class="button primary full">Salvar produto</button></form>`);
 }
 function categoryEditor() {
   modalOpen(`<h2 id="modal-title">Nova categoria</h2><form data-form="category-save">${field('Nome da categoria', 'name', 'text', '', 'required minlength="2" maxlength="120"')}<button class="button primary full">Salvar categoria</button></form>`);
@@ -183,7 +218,8 @@ async function render() {
   try {
     if (page !== 'parceiro') pendingCredentials = null;
     if (page === 'inicio' || !page) home();
-    else if (page === 'buscar' || page === 'loja') await catalog();
+    else if (page === 'buscar') await discovery();
+    else if (page === 'loja') await catalog();
     else if (page === 'entrar') await login();
     else if (page === 'cadastro') login();
     else if (page === 'conta') await account();
@@ -226,6 +262,7 @@ document.addEventListener('click', event => {
   if (name === 'close') { modal.close(); return; }
   if (name === 'new-category') { categoryEditor(); return; }
   if (name === 'product') { productModal(id); return; }
+  if (name === 'search-product') { state.store = positiveId(el.dataset.store); productModal(id); return; }
   if (name === 'new-product' || name === 'edit-product') { productEditor(id); return; }
   if (name === 'delete-product') { confirmDialog('Excluir produto?', 'O produto será removido do cardápio.', 'confirm-delete-product', `data-id="${id}"`); return; }
   if (name === 'clear-cart') { confirmDialog('Limpar sua sacola?', 'Todos os itens desta sacola serão removidos.', 'confirm-clear-cart'); return; }
@@ -241,9 +278,15 @@ document.addEventListener('click', event => {
       if (url.origin !== 'https://auth.mercadopago.com' || url.pathname !== '/authorization') throw new Error('Endereço de autorização inválido.');
       location.assign(url.href);
     } else if (name === 'refresh') await render();
+    else if (name === 'search-filter') {
+      const value = el.dataset.filter;
+      if (state.searchFilters.has(value)) state.searchFilters.delete(value); else state.searchFilters.add(value);
+      state.page = 1; await render();
+    }
     else if (name === 'filter') { state.filter = el.dataset.filter; state.page = 1; await render(); }
     else if (name === 'page') { state.page = positiveId(el.dataset.page) || 1; await render(); }
     else if (name === 'reset-search') { state.page = 1; state.query = ''; state.filter = ''; await render(); }
+    else if (name === 'reset-discovery') { state.page = 1; state.query = ''; state.searchFilters.clear(); await render(); }
     else if (name === 'change-store') { state.store = null; await render(); }
     else if (name === 'logout') {
       try { await request('/session/logout', { method: 'POST', data: {} }); } finally { state.user = null; state.cart = null; nav(); go('entrar'); }
@@ -350,7 +393,7 @@ document.addEventListener('submit', event => {
       const data = { ...values, base_price: values.base_price, id_category: Number(values.id_category), sort_order: Number(values.sort_order), preparation_time_minutes: values.preparation_time_minutes === '' ? null : Number(values.preparation_time_minutes), sku: values.sku.trim() || null, description: values.description.trim() || null };
       delete data.photo; delete data.remove_photo;
       if (values.remove_photo === 'on') data.image_url = '/uploads/products/default.svg';
-      for (const key of ['is_active', 'is_available', 'is_featured', 'is_sweet', 'is_savory', 'is_solid', 'is_snack', 'is_beverage', 'is_stew']) data[key] = values[key] === 'on';
+      for (const key of ['is_active', 'is_available', 'is_featured', 'is_sweet', 'is_savory', 'is_solid', 'is_snack', 'is_beverage', 'is_stew', 'is_breakfast', 'is_lunch', 'is_dinner']) data[key] = values[key] === 'on';
       const id = positiveId(form.dataset.id);
       const saved = await api(`/api/v1/products${id ? `/${id}` : ''}`, { method: id ? 'PUT' : 'POST', data });
       form.dataset.id = saved.id_product;
@@ -375,4 +418,3 @@ async function boot() {
   if (session.status === 'rejected' && session.reason.status !== 401) toast('Não foi possível restaurar sua sessão. Tente novamente.');
 }
 boot();
-

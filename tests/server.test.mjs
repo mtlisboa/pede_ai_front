@@ -48,6 +48,14 @@ test('login keeps tokens out of JavaScript and uses HttpOnly session cookies', a
   assert.equal(f.seen[0].url, '/auth/user/verify-code');
 });
 
+test('forwards public food and restaurant search with repeated filters', async t => {
+  const f = await fixture(t, entry => ({ data: { url: entry.url } }));
+  const r = await f.send('/backend/api/v1/search?q=burger&filters=entrega&filters=lanches');
+  assert.equal(r.status, 200);
+  assert.equal((await r.json()).url, '/api/v1/search?q=burger&filters=entrega&filters=lanches');
+  assert.equal(f.seen[0].auth, undefined);
+});
+
 test('rejects cross-origin writes and paths outside the API allowlist', async t => {
   const f = await fixture(t);
   const r = await fetch(f.base + '/backend/api/v1/carts', { method: 'POST', headers: { Origin: 'https://other.test', 'Content-Type': 'application/json', 'X-Pede-Client': 'web' }, body: '{}' });

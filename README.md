@@ -124,3 +124,9 @@ HttpOnly; a senha usada durante a confirmação fica somente na memória da pág
 O login não redireciona para Mercado Pago. A conexão para pagamentos permanece na
 página de integrações. Configure os provedores e migre o backend antes de usar o
 novo fluxo (docs/login-contatos.md no backend).
+
+## Busca pública
+
+A tela Buscar consulta comidas e restaurantes pelo mesmo campo e oferece filtros
+de entrega, retirada, períodos de refeição, bebidas e tipo de loja. A API usa FTS
+e GIN no PostgreSQL; o frontend envia filtros repetidos para `/api/v1/search`.
