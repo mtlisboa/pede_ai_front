@@ -102,7 +102,7 @@ async function renderOrders() {
 }
 
 function nextStatus(order) {
-  if (order.status === 'PENDING') return ['CONFIRMED', 'Confirmar pedido'];
+  if (order.status === 'PENDING') return ['PREPARING', 'Iniciar preparo'];
   if (order.status === 'CONFIRMED') return ['PREPARING', 'Iniciar preparo'];
   if (order.status === 'PREPARING') return ['READY', 'Marcar como pronto'];
   if (order.status === 'READY') return order.order_type === 'DELIVERY' ? ['OUT_FOR_DELIVERY', 'Saiu para entrega'] : ['DELIVERED', 'Concluir pedido'];
@@ -145,7 +145,7 @@ async function renderOrderDetail(id) {
   ]);
   const operator = isOperator(session.user);
   const advance = operator ? nextStatus(order) : null;
-  const canCancel = order.status === 'PENDING' || (operator && order.status === 'CONFIRMED');
+  const canCancel = operator && ['PENDING', 'CONFIRMED', 'PREPARING', 'READY'].includes(order.status);
   const address = order.delivery_address_snapshot;
   main.innerHTML = `<div data-orders-owned><div class="page-heading"><div><p class="eyebrow">PEDIDO #${h(order.order_number)}</p><h1>${h(STATUS[order.status] || order.status)}</h1></div><a class="button ghost" href="#pedidos">Todos os pedidos</a></div>
     <div class="cart-layout">
@@ -158,6 +158,7 @@ async function renderOrderDetail(id) {
         <h2>Resumo</h2>
         <dl class="totals"><div><dt>Subtotal</dt><dd>${money(order.subtotal_amount)}</dd></div><div><dt>Desconto</dt><dd>− ${money(order.discount_amount)}</dd></div><div><dt>Entrega</dt><dd>${money(order.delivery_fee)}</dd></div><div class="total"><dt>Total</dt><dd>${money(order.total_amount)}</dd></div></dl>
         <p>${statusBadge(order.status)} ${statusBadge(order.payment_status)}</p>
+        <p><strong>Cliente:</strong> ${h(order.client?.name || order.customer_name)}<br><strong>Telefone:</strong> ${h(order.client?.phone || order.customer_phone)}<br><strong>Loja:</strong> ${h(order.store?.name || `#${order.id_store}`)}</p>
         <p>${h(ORDER_TYPE[order.order_type] || order.order_type)} · ${h(PAYMENT_METHOD[order.payment_method] || order.payment_method)}</p>
         ${advance ? `<button type="button" class="button primary full" data-order-action="advance-order" data-id="${order.id_order}" data-version="${order.version}" data-status="${advance[0]}">${advance[1]}</button>` : ''}
         ${canCancel ? `<button type="button" class="button text-danger full" data-order-action="cancel-order" data-id="${order.id_order}" data-version="${order.version}">Cancelar pedido</button>` : ''}
